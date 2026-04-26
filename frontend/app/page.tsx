@@ -1,10 +1,12 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
-import Lobby from '../components/Lobby';
-import GameScreen from '../components/GameScreen';
 import { useSignalR } from '../lib/signalr';
 import { Session } from '../lib/types';
+
+const Lobby = dynamic(() => import('../components/Lobby'), { ssr: false });
+const GameScreen = dynamic(() => import('../components/GameScreen'), { ssr: false });
 
 export default function Home() {
   const [sessionCode, setSessionCode] = useState<string | null>(null);
