@@ -6,7 +6,7 @@ resourceGroup: rg-rankandfile-${AZURE_ENV_NAME}
 services:
   frontend:
     project: frontend
-    dist: .next
+    dist: out
     language: js
     host: staticwebapp
     outputPath: frontend

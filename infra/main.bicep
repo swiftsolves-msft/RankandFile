@@ -147,7 +147,7 @@ resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
     branch: githubBranch
     buildProperties: {
       appLocation: '/frontend'
-      outputLocation: '.next' // Next.js output
+      outputLocation: 'out' // next.config.js output: 'export' writes here
       apiLocation: '' // we use separate backend
     }
   }
