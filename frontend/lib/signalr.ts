@@ -10,9 +10,9 @@ export function useSignalR() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const hubUrl = process.env.NEXT_PUBLIC_HUB_URL;
+    const hubUrl = import.meta.env.NEXT_PUBLIC_HUB_URL || import.meta.env.VITE_HUB_URL;
     if (!hubUrl) {
-      setError('Hub URL not configured. Set NEXT_PUBLIC_HUB_URL.');
+      setError('Hub URL not configured. Set NEXT_PUBLIC_HUB_URL or VITE_HUB_URL.');
       return;
     }
 

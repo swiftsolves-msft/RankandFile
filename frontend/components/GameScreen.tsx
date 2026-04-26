@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { HubConnection } from '@microsoft/signalr';
+import type { HubConnection } from '@microsoft/signalr';
 import RankingPhase from './RankingPhase';
 import GuessingPhase from './GuessingPhase';
 import ResultsPhase from './ResultsPhase';
