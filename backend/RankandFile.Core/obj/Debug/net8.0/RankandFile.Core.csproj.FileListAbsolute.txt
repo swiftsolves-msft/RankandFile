@@ -1,0 +1,17 @@
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\bin\Debug\net8.0\Microsoft.Azure.Cosmos.ServiceInterop.dll
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\bin\Debug\net8.0\Cosmos.CRTCompat.dll
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\bin\Debug\net8.0\msvcp140.dll
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\bin\Debug\net8.0\vcruntime140.dll
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\bin\Debug\net8.0\vcruntime140_1.dll
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\bin\Debug\net8.0\RankandFile.Core.deps.json
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\bin\Debug\net8.0\RankandFile.Core.dll
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\bin\Debug\net8.0\RankandFile.Core.pdb
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\obj\Debug\net8.0\RankandFile.Core.csproj.AssemblyReference.cache
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\obj\Debug\net8.0\RankandFile.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\obj\Debug\net8.0\RankandFile.Core.AssemblyInfoInputs.cache
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\obj\Debug\net8.0\RankandFile.Core.AssemblyInfo.cs
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\obj\Debug\net8.0\RankandFile.Core.csproj.CoreCompileInputs.cache
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\obj\Debug\net8.0\RankandFile.Core.dll
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\obj\Debug\net8.0\refint\RankandFile.Core.dll
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\obj\Debug\net8.0\RankandFile.Core.pdb
+C:\Users\naswif\Downloads\RankandFile\backend\RankandFile.Core\obj\Debug\net8.0\ref\RankandFile.Core.dll

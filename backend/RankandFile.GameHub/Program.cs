@@ -1,0 +1,68 @@
+using Azure.Identity;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Azure.Cosmos;
+using Microsoft.Azure.SignalR;
+using System.Threading.RateLimiting;
+using RankandFile.Core.Repositories;
+using RankandFile.Core.Services;
+using RankandFile.GameHub;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// CORS: only allow the configured frontend origin
+var allowedOrigin = builder.Configuration["Frontend__BaseUrl"] ?? "http://localhost:3000";
+builder.Services.AddCors(options =>
+    options.AddDefaultPolicy(p =>
+        p.WithOrigins(allowedOrigin)
+         .WithMethods("GET", "POST")
+         .WithHeaders("Content-Type", "Authorization", "X-Requested-With")));
+
+// Rate limiting: max 20 SignalR negotiate requests per 30s per IP
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("signalr", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 20;
+        limiterOptions.Window = TimeSpan.FromSeconds(30);
+        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiterOptions.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
+// Azure SignalR Service -- use MSI (DefaultAzureCredential) when an endpoint is configured;
+// omitting it falls back to local in-process SignalR for development.
+var signalREndpoint = builder.Configuration["AzureSignalR__Endpoint"];
+var signalRBuilder = builder.Services.AddSignalR();
+if (!string.IsNullOrWhiteSpace(signalREndpoint))
+{
+    signalRBuilder.AddAzureSignalR(options =>
+    {
+        options.Endpoints = new ServiceEndpoint[]
+        {
+            new ServiceEndpoint(new Uri(signalREndpoint), new DefaultAzureCredential())
+        };
+    });
+}
+
+// Cosmos DB -- MSI via DefaultAzureCredential; no connection string required.
+var cosmosEndpoint = builder.Configuration["Cosmos__Endpoint"];
+if (string.IsNullOrWhiteSpace(cosmosEndpoint))
+    throw new InvalidOperationException("Cosmos__Endpoint is not configured.");
+
+var cosmosClient = new CosmosClient(cosmosEndpoint, new DefaultAzureCredential());
+builder.Services.AddSingleton(cosmosClient);
+builder.Services.AddSingleton<SessionRepository>();
+
+// Domain services
+builder.Services.AddSingleton<CardGeneratorService>();
+builder.Services.AddSingleton<PairingService>();
+builder.Services.AddSingleton<ScoringService>();
+
+var app = builder.Build();
+
+app.UseRateLimiter();
+app.UseCors();
+app.MapHub<GameHub>("/gamehub").RequireRateLimiting("signalr");
+
+app.Run();

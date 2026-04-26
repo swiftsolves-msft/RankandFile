@@ -1,0 +1,22 @@
+[
+  {"noun": "Firewall", "tooltip": "First line of defense that filters network traffic"},
+  {"noun": "Phishing", "tooltip": "Social engineering attack via deceptive emails"},
+  {"noun": "Ransomware", "tooltip": "Malware that encrypts files and demands payment"},
+  {"noun": "Encryption", "tooltip": "Process of converting data into unreadable code"},
+  {"noun": "Malware", "tooltip": "Any software designed to harm or exploit systems"},
+  {"noun": "VPN", "tooltip": "Virtual Private Network for secure remote access"},
+  {"noun": "Multi-Factor Authentication", "tooltip": "Requires multiple verification methods"},
+  {"noun": "Patch Management", "tooltip": "Process of keeping software up to date"},
+  {"noun": "Incident Response", "tooltip": "Structured approach to handling security breaches"},
+  {"noun": "Vulnerability Scanning", "tooltip": "Automated detection of security weaknesses"},
+  {"noun": "Zero Trust", "tooltip": "Never trust, always verify security model"},
+  {"noun": "SIEM", "tooltip": "Security Information and Event Management system"},
+  {"noun": "EDR", "tooltip": "Endpoint Detection and Response tools"},
+  {"noun": "Password Manager", "tooltip": "Secure storage for unique strong passwords"},
+  {"noun": "Access Control", "tooltip": "Managing who can access what resources"},
+  {"noun": "Threat Intelligence", "tooltip": "Knowledge about existing or emerging threats"},
+  {"noun": "Penetration Testing", "tooltip": "Simulated cyber attack to find vulnerabilities"},
+  {"noun": "DevSecOps", "tooltip": "Integrating security into DevOps pipeline"},
+  {"noun": "Container Security", "tooltip": "Protecting Docker and Kubernetes workloads"},
+  {"noun": "Cloud Security", "tooltip": "Securing applications and data in the cloud"}
+]

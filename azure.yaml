@@ -1,0 +1,16 @@
+# azure.yaml
+name: rankandfile
+metadata:
+  template: azd-init@1.0.0
+resourceGroup: rg-rankandfile-${AZURE_ENV_NAME}
+services:
+  frontend:
+    project: frontend
+    dist: .next
+    language: js
+    host: staticwebapp
+    outputPath: frontend
+  backend:
+    project: backend/RankandFile.GameHub
+    language: dotnet
+    host: appservice
