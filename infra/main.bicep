@@ -175,14 +175,6 @@ resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
   }
 }
 
-// Link backend to SWA (optional but recommended for CORS + auth)
-resource swaBackendLink 'Microsoft.Web/staticSites/linkedBackends@2022-09-01' = {
-  parent: staticWebApp
-  name: 'backend'
-  properties: {
-    backendResourceId: backendApp.id
-  }
-}
 
 // ============== OUTPUTS (shown after azd up) ==============
 output frontendUrl string = staticWebApp.properties.defaultHostname
