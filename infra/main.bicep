@@ -136,7 +136,7 @@ resource backendApp 'Microsoft.Web/sites@2024-03-01' = {
 // Built-in Data Contributor role allows read/write on items.
 resource cosmosSqlRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-09-01' = {
   parent: cosmosAccount
-  name: guid(cosmosAccount.id, backendApp.identity.principalId, cosmosDataContributorRoleId)
+  name: guid(cosmosAccount.id, backendApp.id, cosmosDataContributorRoleId)
   properties: {
     roleDefinitionId: resourceId(
       'Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions',
@@ -151,7 +151,7 @@ resource cosmosSqlRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleA
 // ============== RBAC: Azure SignalR App Server ==============
 // ARM RBAC role that lets the app server connect to Azure SignalR Service.
 resource signalRRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(signalR.id, backendApp.identity.principalId, signalRAppServerRoleId)
+  name: guid(signalR.id, backendApp.id, signalRAppServerRoleId)
   scope: signalR
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', signalRAppServerRoleId)
