@@ -84,7 +84,7 @@ resource sessionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/c
 }
 
 // ============== AZURE SIGNALR SERVICE ==============
-resource signalR 'Microsoft.SignalRService/signalR@2025-01-01-preview' = {
+resource signalR 'Microsoft.SignalRService/signalR@2023-02-01' = {
   name: '${baseName}-signalr'
   location: location
   sku: {
