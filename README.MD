@@ -4,7 +4,7 @@
 
 Built for team-building, security awareness workshops, virtual happy hours, and cybersecurity conferences.
 
-![Rank & File](https://via.placeholder.com/800x400/0a0a0a/00ff9d?text=RANK+%26+FILE+—+CYBER+EDITION)
+![Rank & File](images/rankandfile.jpg)
 
 ## 🎯 Purpose
 
