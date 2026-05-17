@@ -93,8 +93,6 @@ resource signalR 'Microsoft.SignalRService/signalR@2023-02-01' = {
   }
   properties: {
     features: [{ flag: 'ServiceMode', value: 'Default' }]
-    // Disable key-based auth at the Azure level — MSI only
-    disableLocalAuth: true
   }
 }
 
