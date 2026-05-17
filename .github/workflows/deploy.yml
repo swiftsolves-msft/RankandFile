@@ -5,14 +5,13 @@ on:
     branches: [ main ]
 
 # Required secrets in GitHub → Settings → Secrets and variables → Actions:
-#   AZURE_CREDENTIALS   – JSON output of: az ad sp create-for-rbac --sdk-auth
-#                         (needs Contributor + User Access Administrator on the
-#                          target resource group, or subscription for first-time deploy)
+#   AZURE_CREDENTIALS     – JSON output of: az ad sp create-for-rbac --sdk-auth
+#                           (needs Contributor + User Access Administrator on the
+#                            target resource group, or subscription for first-time deploy)
 #   AZURE_SUBSCRIPTION_ID – your Azure subscription GUID
 #   AZURE_ENV_NAME        – e.g. "prod" (drives resource naming in Bicep)
 #   AZURE_LOCATION        – e.g. "eastus2"
-#   SWA_DEPLOYMENT_TOKEN  – Static Web Apps token (output of: azd up, then
-#                           az staticwebapp secrets list --name <swa-name>)
+#   VITE_HUB_URL          – https://<api-app-service>.azurewebsites.net/gamehub
 
 permissions:
   id-token: write
@@ -22,21 +21,24 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
-    env:
-      AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
-      AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to Azure
+      - name: Log in to Azure CLI
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Set up Azure Developer CLI
         uses: azure/setup-azd@v2
+
+      - name: Log in to azd
+        run: |
+          azd auth login \
+            --client-id "${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}" \
+            --client-secret "${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}" \
+            --tenant-id "${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}"
 
       - name: Provision infrastructure and deploy
         run: azd up --no-prompt
