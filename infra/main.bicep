@@ -26,6 +26,28 @@ var cosmosDataContributorRoleId = '00000000-0000-0000-0000-000000000002'
 // SignalR App Server (ARM RBAC role that allows an app server to connect)
 var signalRAppServerRoleId = '420fcaa2-552c-430f-98ca-3264be4806c7'
 
+// ============== LOG ANALYTICS + APPLICATION INSIGHTS ==============
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: '${baseName}-logs'
+  location: location
+  tags: { environment: environmentName }
+  properties: {
+    sku: { name: 'PerGB2018' }
+    retentionInDays: 30
+  }
+}
+
+resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: '${baseName}-ai'
+  location: location
+  tags: { environment: environmentName }
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: logAnalytics.id
+  }
+}
+
 // ============== COSMOS DB ==============
 resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-09-01' = {
   name: '${baseName}-cosmos'
@@ -102,6 +124,8 @@ resource backendApp 'Microsoft.Web/sites@2024-03-01' = {
         { name: 'AzureSignalR__Endpoint', value: 'https://${signalR.properties.hostName}' }
         { name: 'Frontend__BaseUrl', value: 'https://${staticWebApp.properties.defaultHostname}' }
         { name: 'ASPNETCORE_ENVIRONMENT', value: environmentName }
+        { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
+        { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
       ]
     }
   }
@@ -168,3 +192,4 @@ output apiUrl string = backendApp.properties.hostName
 output cosmosEndpoint string = cosmosAccount.properties.documentEndpoint
 output signalRHostname string = signalR.properties.hostName
 output backendIdentityPrincipalId string = backendApp.identity.principalId
+output appInsightsConnectionString string = appInsights.properties.ConnectionString

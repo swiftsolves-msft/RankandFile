@@ -9,6 +9,12 @@ using RankandFile.GameHub;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Application Insights — no-ops when connection string is absent (local dev)
+builder.Services.AddApplicationInsightsTelemetry();
+
+// Health checks — used by App Service and load balancer probes
+builder.Services.AddHealthChecks();
+
 // CORS: only allow the configured frontend origin
 var allowedOrigin = builder.Configuration["Frontend__BaseUrl"] ?? "http://localhost:3000";
 builder.Services.AddCors(options =>
@@ -63,6 +69,7 @@ var app = builder.Build();
 
 app.UseRateLimiter();
 app.UseCors();
+app.MapHealthChecks("/health");
 app.MapHub<GameHub>("/gamehub").RequireRateLimiting("signalr");
 
 app.Run();
