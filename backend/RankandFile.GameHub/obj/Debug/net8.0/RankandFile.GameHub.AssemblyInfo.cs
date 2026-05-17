@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RankandFile.GameHub")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+889a0684646d61df0e8d49269d3dd10bc962d599")]
 [assembly: System.Reflection.AssemblyProductAttribute("RankandFile.GameHub")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RankandFile.GameHub")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

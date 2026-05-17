@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\naswif\\Downloads\\RankandFile\\backend\\RankandFile.Core\\RankandFile.Core.csproj": {}
+    "C:\\Users\\naswif\\Downloads\\GitHub\\RankandFile\\backend\\RankandFile.Core\\RankandFile.Core.csproj": {}
   },
   "projects": {
-    "C:\\Users\\naswif\\Downloads\\RankandFile\\backend\\RankandFile.Core\\RankandFile.Core.csproj": {
+    "C:\\Users\\naswif\\Downloads\\GitHub\\RankandFile\\backend\\RankandFile.Core\\RankandFile.Core.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\naswif\\Downloads\\RankandFile\\backend\\RankandFile.Core\\RankandFile.Core.csproj",
+        "projectUniqueName": "C:\\Users\\naswif\\Downloads\\GitHub\\RankandFile\\backend\\RankandFile.Core\\RankandFile.Core.csproj",
         "projectName": "RankandFile.Core",
-        "projectPath": "C:\\Users\\naswif\\Downloads\\RankandFile\\backend\\RankandFile.Core\\RankandFile.Core.csproj",
+        "projectPath": "C:\\Users\\naswif\\Downloads\\GitHub\\RankandFile\\backend\\RankandFile.Core\\RankandFile.Core.csproj",
         "packagesPath": "C:\\Users\\naswif\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\naswif\\Downloads\\RankandFile\\backend\\RankandFile.Core\\obj\\",
+        "outputPath": "C:\\Users\\naswif\\Downloads\\GitHub\\RankandFile\\backend\\RankandFile.Core\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\naswif\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -38,7 +38,7 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "9.0.300"
+        "SdkAnalysisLevel": "10.0.100"
       },
       "frameworks": {
         "net8.0": {
@@ -60,12 +60,26 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.27, 8.0.27]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.27, 8.0.27]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[8.0.27, 8.0.27]"
+            }
+          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.313/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.108/PortableRuntimeIdentifierGraph.json"
         }
       }
     }
