@@ -3,16 +3,15 @@ name: Deploy to Azure
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 # Required secrets in GitHub → Settings → Secrets and variables → Actions:
-#   AZURE_CREDENTIALS   – JSON output of: az ad sp create-for-rbac --sdk-auth
-#                         (needs Contributor + User Access Administrator on the
-#                          target resource group, or subscription for first-time deploy)
-#   AZURE_SUBSCRIPTION_ID – your Azure subscription GUID
+#   AZURE_CREDENTIALS     – JSON output of: az ad sp create-for-rbac --sdk-auth
+#                           (needs Contributor + User Access Administrator on the
+#                            target resource group, or subscription for first-time deploy)
 #   AZURE_ENV_NAME        – e.g. "prod" (drives resource naming in Bicep)
 #   AZURE_LOCATION        – e.g. "eastus2"
-#   SWA_DEPLOYMENT_TOKEN  – Static Web Apps token (output of: azd up, then
-#                           az staticwebapp secrets list --name <swa-name>)
+#   VITE_HUB_URL          – https://<api-app-service>.azurewebsites.net/gamehub
 
 permissions:
   id-token: write
@@ -22,15 +21,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
-    env:
-      AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
-      AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to Azure
+      - name: Log in to Azure CLI
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -38,12 +33,48 @@ jobs:
       - name: Set up Azure Developer CLI
         uses: azure/setup-azd@v2
 
-      - name: Provision infrastructure and deploy
-        run: azd up --no-prompt
+      - name: Log in to azd
+        run: |
+          azd auth login \
+            --client-id "${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}" \
+            --client-secret "${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}" \
+            --tenant-id "${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}"
+
+      - name: Initialize azd environment
+        run: |
+          SUB_ID="${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}"
+          azd env new "$AZURE_ENV_NAME" \
+            --subscription "$SUB_ID" \
+            --location "$AZURE_LOCATION" \
+            --no-prompt 2>/dev/null || \
+          azd env select "$AZURE_ENV_NAME"
         env:
           AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
           AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
-          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          # Injected into the Vite frontend build so VITE_HUB_URL resolves at compile time.
-          # Secret value: https://<your-api-app-service>.azurewebsites.net/gamehub
+
+      - name: Create resource group
+        run: |
+          SUB_ID="${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}"
+          az group create \
+            --name "rg-rankandfile-$AZURE_ENV_NAME" \
+            --location "$AZURE_LOCATION" \
+            --subscription "$SUB_ID"
+        env:
+          AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
+          AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
+
+      - name: Provision infrastructure
+        run: azd provision --no-prompt
+        env:
+          AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
+          AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
+          AZURE_SUBSCRIPTION_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+          VITE_HUB_URL: ${{ secrets.VITE_HUB_URL }}
+
+      - name: Deploy application
+        run: azd deploy --no-prompt
+        env:
+          AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
+          AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
+          AZURE_SUBSCRIPTION_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
           VITE_HUB_URL: ${{ secrets.VITE_HUB_URL }}
