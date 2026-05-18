@@ -41,6 +41,18 @@ jobs:
             --client-secret "${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}" \
             --tenant-id "${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}"
 
+      - name: Initialize azd environment
+        run: |
+          azd env new "$AZURE_ENV_NAME" \
+            --subscription "$AZURE_SUBSCRIPTION_ID" \
+            --location "$AZURE_LOCATION" \
+            --no-prompt 2>/dev/null || \
+          azd env select "$AZURE_ENV_NAME"
+        env:
+          AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
+
       - name: Provision infrastructure and deploy
         run: azd up --no-prompt
         env:
