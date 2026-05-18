@@ -15,14 +15,17 @@ builder.Services.AddApplicationInsightsTelemetry();
 // Health checks — used by App Service and load balancer probes
 builder.Services.AddHealthChecks();
 
-// CORS: only allow the configured frontend origin
-// App Service env var Frontend__BaseUrl is translated to Frontend:BaseUrl by the env vars provider
+// CORS: only allow the configured frontend origin.
+// AllowCredentials() is required by SignalR negotiate (credentials mode 'include').
+// AllowAnyHeader() is required so the SignalR negotiate preflight passes.
+// App Service env var Frontend__BaseUrl is translated to Frontend:BaseUrl by the env vars provider.
 var allowedOrigin = builder.Configuration["Frontend:BaseUrl"] ?? "http://localhost:3000";
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(p =>
         p.WithOrigins(allowedOrigin)
-         .WithMethods("GET", "POST")
-         .WithHeaders("Content-Type", "Authorization", "X-Requested-With")));
+         .AllowAnyMethod()
+         .AllowAnyHeader()
+         .AllowCredentials()));
 
 // Rate limiting: max 20 SignalR negotiate requests per 30s per IP
 builder.Services.AddRateLimiter(options =>
