@@ -5,20 +5,19 @@ import { useSignalR } from '../lib/signalr';
 import { Session } from '../lib/types';
 
 export default function App() {
-  const [sessionCode, setSessionCode] = useState<string | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const { connection, isConnected, error } = useSignalR();
+  const isDebug = new URLSearchParams(window.location.search).has('debug');
 
   useEffect(() => {
     if (!connection) return;
-    connection.on('SessionUpdated', (session: Session) => {
-      if (!sessionCode) {
-        setSessionCode(session.sessionCode);
-      }
+    connection.on('SessionUpdated', (s: Session) => {
+      setSession(s);
     });
     return () => {
       connection.off('SessionUpdated');
     };
-  }, [connection, sessionCode]);
+  }, [connection]);
 
   const handleCreate = (name: string) => {
     if (!connection) return;
@@ -43,7 +42,7 @@ export default function App() {
         </div>
       )}
 
-      {!sessionCode ? (
+      {!session ? (
         <Lobby
           onCreate={handleCreate}
           onJoin={handleJoin}
@@ -52,8 +51,9 @@ export default function App() {
       ) : (
         connection && (
           <GameScreen
-            sessionCode={sessionCode}
+            session={session}
             connection={connection}
+            isDebug={isDebug}
           />
         )
       )}

@@ -17,20 +17,26 @@ interface TargetInfo {
 }
 
 export default function GameScreen({
-  sessionCode,
+  session: initialSession,
   connection,
+  isDebug,
 }: {
-  sessionCode: string;
+  session: Session;
   connection: HubConnection;
+  isDebug: boolean;
 }) {
+  const sessionCode = initialSession.sessionCode;
   const [phase, setPhase] = useState<'lobby' | 'ranking' | 'guessing' | 'results' | 'leaderboard' | 'gameover'>('lobby');
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [targetInfo, setTargetInfo] = useState<TargetInfo | null>(null);
   const [lastResult, setLastResult] = useState<GuessResult | null>(null);
   const [leaderboard, setLeaderboard] = useState<Player[]>([]);
-  const [players, setPlayers] = useState<Player[]>([]);
+  const [players, setPlayers] = useState<Player[]>(initialSession.players);
+  const [hostPlayerId, setHostPlayerId] = useState<string>(initialSession.hostPlayerId);
   const [timer, setTimer] = useState(0);
   const [serverError, setServerError] = useState<string | null>(null);
+
+  const isHost = connection.connectionId === hostPlayerId;
 
   // Ref so the timer interval can call the latest version of handleSubmit
   const autoSubmitRef = useRef<(() => void) | null>(null);
@@ -67,8 +73,9 @@ export default function GameScreen({
   }, [phase, connection, sessionCode, targetInfo]);
 
   useEffect(() => {
-    connection.on('SessionUpdated', (session: Session) => {
-      setPlayers(session.players);
+    connection.on('SessionUpdated', (s: Session) => {
+      setPlayers(s.players);
+      setHostPlayerId(s.hostPlayerId);
     });
 
     connection.on('RoundStarted', (round: Round) => {
@@ -150,6 +157,10 @@ export default function GameScreen({
     setTimer(0);
   };
 
+  const handleStartRound = () => {
+    connection.invoke('StartNewRound', sessionCode, isDebug).catch(console.error);
+  };
+
   return (
     <div className="space-y-8">
       {serverError && (
@@ -161,7 +172,17 @@ export default function GameScreen({
       {phase === 'lobby' && (
         <div className="text-center text-zinc-400">
           <p className="text-2xl mb-2">Session: <span className="text-neon font-mono font-bold">{sessionCode}</span></p>
-          <p>Waiting for host to start the round…</p>
+          {isDebug && <p className="text-yellow-400 text-sm mb-2">Debug mode — 2-player minimum</p>}
+          {isHost ? (
+            <button
+              onClick={handleStartRound}
+              className="mt-4 px-8 py-3 bg-neon text-black font-bold text-lg rounded-xl hover:opacity-90 transition"
+            >
+              START ROUND
+            </button>
+          ) : (
+            <p>Waiting for host to start the round…</p>
+          )}
           <div className="mt-6 space-y-2">
             {players.map(p => (
               <div key={p.playerId} className="text-white">{p.name}</div>
@@ -192,7 +213,19 @@ export default function GameScreen({
       {phase === 'results' && lastResult && <ResultsPhase result={lastResult} />}
 
       {(phase === 'leaderboard' || phase === 'gameover') && (
-        <Leaderboard players={leaderboard} isFinal={phase === 'gameover'} />
+        <>
+          <Leaderboard players={leaderboard} isFinal={phase === 'gameover'} />
+          {phase === 'leaderboard' && isHost && (
+            <div className="text-center mt-6">
+              <button
+                onClick={handleStartRound}
+                className="px-8 py-3 bg-neon text-black font-bold text-lg rounded-xl hover:opacity-90 transition"
+              >
+                START NEXT ROUND
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {timer > 0 && <Timer seconds={timer} color={timer <= 10 ? 'red-400' : 'neon'} />}

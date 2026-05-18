@@ -67,14 +67,15 @@ public class GameHub : Hub
         await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
     }
 
-    public async Task StartNewRound(string sessionCode)
+    public async Task StartNewRound(string sessionCode, bool debugMode = false)
     {
         var session = await _repo.GetSessionAsync(sessionCode);
         if (session == null) return;
 
-        if (session.Players.Count < MinPlayers)
+        var minPlayers = debugMode ? 2 : MinPlayers;
+        if (session.Players.Count < minPlayers)
         {
-            await Clients.Caller.SendAsync("Error", $"Need at least {MinPlayers} players to start.");
+            await Clients.Caller.SendAsync("Error", $"Need at least {minPlayers} players to start.");
             return;
         }
 
