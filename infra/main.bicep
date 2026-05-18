@@ -40,7 +40,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 // ============== COSMOS DB ==============
-resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-09-01' = {
+resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-08-15' = {
   name: '${baseName}-cosmos'
   location: location
   tags: { environment: environmentName }
@@ -54,7 +54,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-09-01' = {
   }
 }
 
-resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-09-01' = {
+resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-08-15' = {
   parent: cosmosAccount
   name: 'rankandfile'
   properties: {
@@ -62,7 +62,7 @@ resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-09-01
   }
 }
 
-resource sessionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-09-01' = {
+resource sessionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-08-15' = {
   parent: cosmosDb
   name: 'sessions'
   properties: {
@@ -75,7 +75,7 @@ resource sessionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/c
 }
 
 // ============== AZURE SIGNALR SERVICE ==============
-resource signalR 'Microsoft.SignalRService/signalR@2025-01-01-preview' = {
+resource signalR 'Microsoft.SignalRService/signalR@2023-02-01' = {
   name: '${baseName}-signalr'
   location: location
   sku: {
@@ -84,19 +84,17 @@ resource signalR 'Microsoft.SignalRService/signalR@2025-01-01-preview' = {
   }
   properties: {
     features: [{ flag: 'ServiceMode', value: 'Default' }]
-    // Disable key-based auth at the Azure level — MSI only
-    disableLocalAuth: true
   }
 }
 
 // ============== BACKEND APP SERVICE (.NET SignalR Hub) ==============
-resource appServicePlan 'Microsoft.Web/serverfarms@2024-03-01' = {
+resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: '${baseName}-plan'
   location: location
   sku: { name: 'B1' } // change to P1V3 for production scale
 }
 
-resource backendApp 'Microsoft.Web/sites@2024-03-01' = {
+resource backendApp 'Microsoft.Web/sites@2024-04-01' = {
   name: '${baseName}-api'
   location: location
   kind: 'app'
@@ -125,7 +123,7 @@ resource backendApp 'Microsoft.Web/sites@2024-03-01' = {
 // ============== RBAC: Cosmos DB Data Plane ==============
 // Cosmos data-plane RBAC uses sqlRoleAssignments (not ARM roleAssignments).
 // Built-in Data Contributor role allows read/write on items.
-resource cosmosSqlRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-09-01' = {
+resource cosmosSqlRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-08-15' = {
   parent: cosmosAccount
   name: guid(cosmosAccount.id, backendApp.id, cosmosDataContributorRoleId)
   properties: {
