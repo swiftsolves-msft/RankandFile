@@ -40,9 +40,8 @@ Perfect for **6–60 players**. Runs in ~25–35 minutes (5 fast rounds).
    Guess how your partner ranked the 5 cards.
 
 4. **Results & Scoring**  
-   - Exact card + exact position = **1 point**  
-   - Adjacent position (off by 1) = **0.2 points**  
-   - Perfect match (all 5 correct) = **+1 bonus point** (max 6 points)  
+   - Exact card + exact position = **3 points**  
+   - Adjacent position (off by 1) = **1 point**  
    Scores are added to your total.
 
 5. **Leaderboard**  
