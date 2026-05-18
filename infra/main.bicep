@@ -6,15 +6,6 @@ param environmentName string = 'prod'
 @description('Location for all resources')
 param location string = resourceGroup().location
 
-@description('GitHub repo owner')
-param githubRepoOwner string = 'swiftsolves-msft'
-
-@description('GitHub repo name')
-param githubRepoName string = 'RankandFile'
-
-@description('GitHub branch for Static Web App')
-param githubBranch string = 'main'
-
 @description('Azure SignalR SKU')
 param signalrSku string = 'Standard_S1'
 
@@ -49,7 +40,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 // ============== COSMOS DB ==============
-resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-08-15' = {
+resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-09-01' = {
   name: '${baseName}-cosmos'
   location: location
   tags: { environment: environmentName }
@@ -63,7 +54,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-08-15' = {
   }
 }
 
-resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-08-15' = {
+resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-09-01' = {
   parent: cosmosAccount
   name: 'rankandfile'
   properties: {
@@ -71,7 +62,7 @@ resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-08-15
   }
 }
 
-resource sessionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-08-15' = {
+resource sessionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-09-01' = {
   parent: cosmosDb
   name: 'sessions'
   properties: {
@@ -84,7 +75,7 @@ resource sessionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/c
 }
 
 // ============== AZURE SIGNALR SERVICE ==============
-resource signalR 'Microsoft.SignalRService/signalR@2023-02-01' = {
+resource signalR 'Microsoft.SignalRService/signalR@2025-01-01-preview' = {
   name: '${baseName}-signalr'
   location: location
   sku: {
@@ -93,26 +84,22 @@ resource signalR 'Microsoft.SignalRService/signalR@2023-02-01' = {
   }
   properties: {
     features: [{ flag: 'ServiceMode', value: 'Default' }]
+    // Disable key-based auth at the Azure level — MSI only
+    disableLocalAuth: true
   }
 }
 
 // ============== BACKEND APP SERVICE (.NET SignalR Hub) ==============
-resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
+resource appServicePlan 'Microsoft.Web/serverfarms@2024-03-01' = {
   name: '${baseName}-plan'
   location: location
   sku: { name: 'B1' } // change to P1V3 for production scale
 }
 
-resource backendApp 'Microsoft.Web/sites@2024-04-01' = {
+resource backendApp 'Microsoft.Web/sites@2024-03-01' = {
   name: '${baseName}-api'
   location: location
   kind: 'app'
-  // azd tags let the CLI discover which App Service maps to the 'backend' service
-  tags: {
-    environment: environmentName
-    'azd-env-name': environmentName
-    'azd-service-name': 'backend'
-  }
   // System-assigned managed identity — used by DefaultAzureCredential at runtime
   identity: {
     type: 'SystemAssigned'
@@ -127,7 +114,6 @@ resource backendApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'Cosmos__Endpoint', value: cosmosAccount.properties.documentEndpoint }
         { name: 'AzureSignalR__Endpoint', value: 'https://${signalR.properties.hostName}' }
         { name: 'Frontend__BaseUrl', value: 'https://${staticWebApp.properties.defaultHostname}' }
-        { name: 'WEBSITE_RUN_FROM_PACKAGE', value: '1' }
         { name: 'ASPNETCORE_ENVIRONMENT', value: environmentName }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
         { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
@@ -139,7 +125,7 @@ resource backendApp 'Microsoft.Web/sites@2024-04-01' = {
 // ============== RBAC: Cosmos DB Data Plane ==============
 // Cosmos data-plane RBAC uses sqlRoleAssignments (not ARM roleAssignments).
 // Built-in Data Contributor role allows read/write on items.
-resource cosmosSqlRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-08-15' = {
+resource cosmosSqlRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-09-01' = {
   parent: cosmosAccount
   name: guid(cosmosAccount.id, backendApp.id, cosmosDataContributorRoleId)
   properties: {
@@ -166,32 +152,22 @@ resource signalRRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
 }
 
 // ============== FRONTEND - AZURE STATIC WEB APPS ==============
+// provider: 'Other' avoids Azure auto-creating a GitHub Actions workflow;
+// we deploy manually via the SWA API token in our own workflow.
 resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
   name: '${baseName}-frontend'
   location: location
-  // azd tags let the CLI discover which SWA maps to the 'frontend' service
-  tags: {
-    environment: environmentName
-    'azd-env-name': environmentName
-    'azd-service-name': 'frontend'
-  }
   sku: { name: 'Standard' }
   properties: {
-    provider: 'GitHub'
-    repositoryUrl: 'https://github.com/${githubRepoOwner}/${githubRepoName}'
-    branch: githubBranch
-    buildProperties: {
-      appLocation: '/frontend'
-      outputLocation: 'out' // next.config.js output: 'export' writes here
-      apiLocation: '' // we use separate backend
-    }
+    provider: 'Other'
   }
 }
 
-
-// ============== OUTPUTS (shown after azd up) ==============
+// ============== OUTPUTS (shown after deploy) ==============
 output frontendUrl string = staticWebApp.properties.defaultHostname
+output staticWebAppName string = staticWebApp.name
 output apiUrl string = backendApp.properties.defaultHostName
+output appServiceName string = backendApp.name
 output cosmosEndpoint string = cosmosAccount.properties.documentEndpoint
 output signalRHostname string = signalR.properties.hostName
 output backendIdentityPrincipalId string = backendApp.identity.principalId
