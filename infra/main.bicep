@@ -121,6 +121,7 @@ resource backendApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'Cosmos__Endpoint', value: cosmosAccount.properties.documentEndpoint }
         { name: 'AzureSignalR__Endpoint', value: 'https://${signalR.properties.hostName}' }
         { name: 'Frontend__BaseUrl', value: 'https://${staticWebApp.properties.defaultHostname}' }
+        { name: 'WEBSITE_RUN_FROM_PACKAGE', value: '1' }
         { name: 'ASPNETCORE_ENVIRONMENT', value: environmentName }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
         { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
@@ -178,7 +179,7 @@ resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
 
 // ============== OUTPUTS (shown after azd up) ==============
 output frontendUrl string = staticWebApp.properties.defaultHostname
-output apiUrl string = backendApp.properties.hostName
+output apiUrl string = backendApp.properties.defaultHostName
 output cosmosEndpoint string = cosmosAccount.properties.documentEndpoint
 output signalRHostname string = signalR.properties.hostName
 output backendIdentityPrincipalId string = backendApp.identity.principalId
