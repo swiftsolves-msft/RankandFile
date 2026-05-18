@@ -6,15 +6,6 @@ param environmentName string = 'prod'
 @description('Location for all resources')
 param location string = resourceGroup().location
 
-@description('GitHub repo owner')
-param githubRepoOwner string = 'swiftsolves-msft'
-
-@description('GitHub repo name')
-param githubRepoName string = 'RankandFile'
-
-@description('GitHub branch for Static Web App')
-param githubBranch string = 'main'
-
 @description('Azure SignalR SKU')
 param signalrSku string = 'Standard_S1'
 
@@ -136,7 +127,7 @@ resource backendApp 'Microsoft.Web/sites@2024-03-01' = {
 // Built-in Data Contributor role allows read/write on items.
 resource cosmosSqlRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-09-01' = {
   parent: cosmosAccount
-  name: guid(cosmosAccount.id, backendApp.identity.principalId, cosmosDataContributorRoleId)
+  name: guid(cosmosAccount.id, backendApp.id, cosmosDataContributorRoleId)
   properties: {
     roleDefinitionId: resourceId(
       'Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions',
@@ -151,7 +142,7 @@ resource cosmosSqlRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleA
 // ============== RBAC: Azure SignalR App Server ==============
 // ARM RBAC role that lets the app server connect to Azure SignalR Service.
 resource signalRRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(signalR.id, backendApp.identity.principalId, signalRAppServerRoleId)
+  name: guid(signalR.id, backendApp.id, signalRAppServerRoleId)
   scope: signalR
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', signalRAppServerRoleId)
@@ -161,34 +152,22 @@ resource signalRRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
 }
 
 // ============== FRONTEND - AZURE STATIC WEB APPS ==============
+// provider: 'Other' avoids Azure auto-creating a GitHub Actions workflow;
+// we deploy manually via the SWA API token in our own workflow.
 resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
   name: '${baseName}-frontend'
   location: location
   sku: { name: 'Standard' }
   properties: {
-    provider: 'GitHub'
-    repositoryUrl: 'https://github.com/${githubRepoOwner}/${githubRepoName}'
-    branch: githubBranch
-    buildProperties: {
-      appLocation: '/frontend'
-      outputLocation: 'out' // next.config.js output: 'export' writes here
-      apiLocation: '' // we use separate backend
-    }
+    provider: 'Other'
   }
 }
 
-// Link backend to SWA (optional but recommended for CORS + auth)
-resource swaBackendLink 'Microsoft.Web/staticSites/linkedBackends@2022-09-01' = {
-  parent: staticWebApp
-  name: 'backend'
-  properties: {
-    backendResourceId: backendApp.id
-  }
-}
-
-// ============== OUTPUTS (shown after azd up) ==============
+// ============== OUTPUTS (shown after deploy) ==============
 output frontendUrl string = staticWebApp.properties.defaultHostname
-output apiUrl string = backendApp.properties.hostName
+output staticWebAppName string = staticWebApp.name
+output apiUrl string = backendApp.properties.defaultHostName
+output appServiceName string = backendApp.name
 output cosmosEndpoint string = cosmosAccount.properties.documentEndpoint
 output signalRHostname string = signalR.properties.hostName
 output backendIdentityPrincipalId string = backendApp.identity.principalId

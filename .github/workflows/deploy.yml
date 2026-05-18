@@ -25,32 +25,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
       - name: Log in to Azure CLI
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Set up Azure Developer CLI
-        uses: azure/setup-azd@v2
-
-      - name: Log in to azd
-        run: |
-          azd auth login \
-            --client-id "${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}" \
-            --client-secret "${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}" \
-            --tenant-id "${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}"
-
-      - name: Initialize azd environment
-        run: |
-          SUB_ID="${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}"
-          azd env new "$AZURE_ENV_NAME" \
-            --subscription "$SUB_ID" \
-            --location "$AZURE_LOCATION" \
-            --no-prompt 2>/dev/null || \
-          azd env select "$AZURE_ENV_NAME"
-        env:
-          AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
-          AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
 
       - name: Create resource group
         run: |
@@ -63,18 +53,63 @@ jobs:
           AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
           AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
 
-      - name: Provision infrastructure
-        run: azd provision --no-prompt
+      - name: Deploy infrastructure (Bicep)
+        id: infra
+        run: |
+          SUB_ID="${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}"
+          OUTPUTS=$(az deployment group create \
+            --subscription "$SUB_ID" \
+            --resource-group "rg-rankandfile-$AZURE_ENV_NAME" \
+            --template-file infra/main.bicep \
+            --parameters environmentName="$AZURE_ENV_NAME" location="$AZURE_LOCATION" \
+            --query "properties.outputs" \
+            --output json)
+
+          echo "app_service_name=$(echo "$OUTPUTS" | jq -r '.appServiceName.value')" >> $GITHUB_OUTPUT
+          echo "swa_name=$(echo "$OUTPUTS" | jq -r '.staticWebAppName.value')"       >> $GITHUB_OUTPUT
+          echo "api_url=$(echo "$OUTPUTS" | jq -r '.apiUrl.value')"                   >> $GITHUB_OUTPUT
         env:
           AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
           AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
-          AZURE_SUBSCRIPTION_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+
+      - name: Build and deploy backend
+        run: |
+          SUB_ID="${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}"
+          dotnet publish backend/RankandFile.GameHub/RankandFile.GameHub.csproj \
+            -c Release -o ./publish
+          cd ./publish && zip -r ../backend.zip . && cd ..
+          az webapp deploy \
+            --subscription "$SUB_ID" \
+            --resource-group "rg-rankandfile-$AZURE_ENV_NAME" \
+            --name "${{ steps.infra.outputs.app_service_name }}" \
+            --src-path backend.zip \
+            --type zip \
+            --async true
+        env:
+          AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+        env:
           VITE_HUB_URL: ${{ secrets.VITE_HUB_URL }}
 
-      - name: Deploy application
-        run: azd deploy --no-prompt
+      - name: Deploy frontend to Static Web App
+        run: |
+          SUB_ID="${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}"
+          SWA_NAME="${{ steps.infra.outputs.swa_name }}"
+          SWA_TOKEN=$(az staticwebapp secrets list \
+            --subscription "$SUB_ID" \
+            --name "$SWA_NAME" \
+            --resource-group "rg-rankandfile-$AZURE_ENV_NAME" \
+            --query "properties.apiKey" \
+            --output tsv)
+          npx --yes @azure/static-web-apps-cli deploy \
+            frontend/out \
+            --deployment-token "$SWA_TOKEN" \
+            --env production \
+            --no-use-keychain
         env:
           AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
-          AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
-          AZURE_SUBSCRIPTION_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
-          VITE_HUB_URL: ${{ secrets.VITE_HUB_URL }}
