@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, GuessResult } from '../lib/types';
 
-const DISCUSSION_SECONDS = 90;
+const DISCUSSION_SECONDS = 120;
 
 function MatchBadge({ match }: { match: 'exact' | 'near' | 'miss' | undefined }) {
   if (match === 'exact') return <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/40">EXACT +3</span>;
@@ -20,17 +20,35 @@ function rowBg(match: 'exact' | 'near' | 'miss' | undefined) {
 export default function ResultsPhase({
   result,
   cards,
+  discussionActive,
+  onDiscussionEnd,
 }: {
   result: GuessResult;
   cards: Card[];
+  discussionActive: boolean;
+  onDiscussionEnd: () => void;
 }) {
   const [timeLeft, setTimeLeft] = useState(DISCUSSION_SECONDS);
+  // Stable ref so the interval callback never captures a stale onDiscussionEnd
+  const onDiscussionEndRef = useRef(onDiscussionEnd);
+  onDiscussionEndRef.current = onDiscussionEnd;
 
+  // Start (or restart) the countdown whenever discussion becomes active
   useEffect(() => {
-    if (timeLeft <= 0) return;
-    const id = setInterval(() => setTimeLeft(t => Math.max(0, t - 1)), 1000);
+    if (!discussionActive) return;
+    setTimeLeft(DISCUSSION_SECONDS);
+    const id = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(id);
+          onDiscussionEndRef.current();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
     return () => clearInterval(id);
-  }, [timeLeft]);
+  }, [discussionActive]);
 
   const cardMap = Object.fromEntries(cards.map(c => [c.noun, c]));
   const maxScore = cards.length * 3;
@@ -75,18 +93,28 @@ export default function ResultsPhase({
         })}
       </div>
 
-      {/* Discussion timer */}
-      <div className={`rounded-2xl border p-6 text-center transition-colors ${
-        timeLeft <= 15 ? 'border-red-500/50 bg-red-500/5' : 'border-zinc-700 bg-zinc-900'
-      }`}>
-        <p className="text-zinc-400 text-sm mb-1 uppercase tracking-wider">Discussion time</p>
-        <div className={`text-5xl font-mono font-bold ${timeLeft <= 15 ? 'text-red-400' : 'text-neon'}`}>
-          {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+      {/* Discussion timer — only shown once both players have submitted */}
+      {discussionActive ? (
+        <div className={`rounded-2xl border p-6 text-center transition-colors ${
+          timeLeft <= 20 ? 'border-red-500/50 bg-red-500/5' : 'border-zinc-700 bg-zinc-900'
+        }`}>
+          <p className="text-zinc-400 text-sm mb-1 uppercase tracking-wider">Discussion time</p>
+          <div className={`text-5xl font-mono font-bold ${timeLeft <= 20 ? 'text-red-400' : 'text-neon'}`}>
+            {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+          </div>
+          <p className="text-zinc-500 text-xs mt-2">
+            Talk it out — why did you rank them that way?
+          </p>
         </div>
-        <p className="text-zinc-500 text-xs mt-2">
-          Talk it out — why did you rank them that way?
-        </p>
-      </div>
+      ) : (
+        <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center">
+          <div className="flex items-center justify-center gap-3 text-zinc-400">
+            <span className="animate-pulse text-neon text-lg">●</span>
+            <span>Waiting for your partner to submit their guess…</span>
+          </div>
+          <p className="text-zinc-600 text-xs mt-2">Discussion timer starts when both players have submitted</p>
+        </div>
+      )}
     </div>
   );
 }
