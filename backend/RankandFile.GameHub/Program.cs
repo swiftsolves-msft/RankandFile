@@ -62,7 +62,17 @@ var cosmosEndpoint = builder.Configuration["Cosmos:Endpoint"];
 if (string.IsNullOrWhiteSpace(cosmosEndpoint))
     throw new InvalidOperationException("Cosmos:Endpoint is not configured.");
 
-var cosmosClient = new CosmosClient(cosmosEndpoint, new DefaultAzureCredential());
+// CamelCase serialization maps C# 'Id' → JSON 'id', which Cosmos DB requires.
+// It also serializes all other properties (SessionCode → sessionCode) consistently
+// with the SQL queries in SessionRepository that reference camelCase field names.
+var cosmosClient = new CosmosClient(cosmosEndpoint, new DefaultAzureCredential(),
+    new CosmosClientOptions
+    {
+        SerializerOptions = new CosmosSerializationOptions
+        {
+            PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
+        }
+    });
 builder.Services.AddSingleton(cosmosClient);
 builder.Services.AddSingleton<SessionRepository>();
 
