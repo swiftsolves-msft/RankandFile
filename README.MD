@@ -4,6 +4,8 @@
 
 Built for team-building, security awareness workshops, virtual happy hours, and cybersecurity conferences.
 
+## [PLAY HERE!](https://red-bush-0db18090f.7.azurestaticapps.net/)
+
 ![Rank & File](images/rankandfile.jpg)
 
 ## 🎯 Purpose
