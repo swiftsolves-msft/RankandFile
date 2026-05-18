@@ -36,7 +36,26 @@ export default function GameScreen({
   const [timer, setTimer] = useState(0);
   const [serverError, setServerError] = useState<string | null>(null);
 
+  // Leaderboard arrives when all guesses are in, but we delay showing it
+  // until the discussion timer in ResultsPhase completes.
+  const [pendingLeaderboard, setPendingLeaderboard] = useState<Player[] | null>(null);
+  const [discussionActive, setDiscussionActive] = useState(false);
+  const [discussionDone, setDiscussionDone] = useState(false);
+
   const isHost = connection.connectionId === hostPlayerId;
+
+  // Transition to leaderboard once both conditions are true:
+  // 1) all guesses submitted (pendingLeaderboard set by LeaderboardUpdate)
+  // 2) discussion timer expired (discussionDone set by ResultsPhase callback)
+  useEffect(() => {
+    if (pendingLeaderboard !== null && discussionDone) {
+      setLeaderboard(pendingLeaderboard);
+      setPendingLeaderboard(null);
+      setDiscussionActive(false);
+      setDiscussionDone(false);
+      setPhase('leaderboard');
+    }
+  }, [pendingLeaderboard, discussionDone]);
 
   // Ref so the timer interval can call the latest version of handleSubmit
   const autoSubmitRef = useRef<(() => void) | null>(null);
@@ -81,7 +100,7 @@ export default function GameScreen({
     connection.on('RoundStarted', (round: Round) => {
       setCurrentRound(round);
       setPhase('ranking');
-      setTimer(30);
+      setTimer(60);
       // Resolve our target from pairings
       const myId = connection.connectionId;
       if (myId && round.pairings) {
@@ -110,20 +129,23 @@ export default function GameScreen({
     });
 
     connection.on('AllRankingsSubmitted', () => {
-      setTimer(45);
+      setTimer(60);
       setPhase('guessing');
     });
 
     connection.on('GuessResult', (result: GuessResult) => {
       setLastResult(result);
       setTimer(0);
-      autoSubmitRef.current = null; // nothing to auto-submit during discussion
+      autoSubmitRef.current = null;
+      setDiscussionActive(false); // wait for partner before starting discussion timer
       setPhase('results');
     });
 
     connection.on('LeaderboardUpdate', (lb: Player[]) => {
-      setLeaderboard(lb);
-      setPhase('leaderboard');
+      // Don't change phase — store the data and start the discussion timer.
+      // ResultsPhase transitions to leaderboard after the discussion period ends.
+      setPendingLeaderboard(lb);
+      setDiscussionActive(true);
     });
 
     connection.on('GameOver', (finalStandings: Player[]) => {
@@ -149,7 +171,7 @@ export default function GameScreen({
   const handleSubmitRanking = (ranked: string[]) => {
     connection.invoke('SubmitRanking', sessionCode, ranked).catch(console.error);
     setPhase('guessing');
-    setTimer(45);
+    setTimer(60);
   };
 
   const handleSubmitGuess = (guessed: string[]) => {
@@ -212,7 +234,12 @@ export default function GameScreen({
       )}
 
       {phase === 'results' && lastResult && currentRound && (
-        <ResultsPhase result={lastResult} cards={currentRound.cards} />
+        <ResultsPhase
+          result={lastResult}
+          cards={currentRound.cards}
+          discussionActive={discussionActive}
+          onDiscussionEnd={() => setDiscussionDone(true)}
+        />
       )}
 
       {(phase === 'leaderboard' || phase === 'gameover') && (
