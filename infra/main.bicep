@@ -107,6 +107,12 @@ resource backendApp 'Microsoft.Web/sites@2024-04-01' = {
   name: '${baseName}-api'
   location: location
   kind: 'app'
+  // azd tags let the CLI discover which App Service maps to the 'backend' service
+  tags: {
+    environment: environmentName
+    'azd-env-name': environmentName
+    'azd-service-name': 'backend'
+  }
   // System-assigned managed identity — used by DefaultAzureCredential at runtime
   identity: {
     type: 'SystemAssigned'
@@ -163,6 +169,12 @@ resource signalRRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
 resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
   name: '${baseName}-frontend'
   location: location
+  // azd tags let the CLI discover which SWA maps to the 'frontend' service
+  tags: {
+    environment: environmentName
+    'azd-env-name': environmentName
+    'azd-service-name': 'frontend'
+  }
   sku: { name: 'Standard' }
   properties: {
     provider: 'GitHub'
