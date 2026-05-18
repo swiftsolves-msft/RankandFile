@@ -16,7 +16,8 @@ builder.Services.AddApplicationInsightsTelemetry();
 builder.Services.AddHealthChecks();
 
 // CORS: only allow the configured frontend origin
-var allowedOrigin = builder.Configuration["Frontend__BaseUrl"] ?? "http://localhost:3000";
+// App Service env var Frontend__BaseUrl is translated to Frontend:BaseUrl by the env vars provider
+var allowedOrigin = builder.Configuration["Frontend:BaseUrl"] ?? "http://localhost:3000";
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(p =>
         p.WithOrigins(allowedOrigin)
@@ -38,7 +39,8 @@ builder.Services.AddRateLimiter(options =>
 
 // Azure SignalR Service -- use MSI (DefaultAzureCredential) when an endpoint is configured;
 // omitting it falls back to local in-process SignalR for development.
-var signalREndpoint = builder.Configuration["AzureSignalR__Endpoint"];
+// App Service env var AzureSignalR__Endpoint maps to config key AzureSignalR:Endpoint
+var signalREndpoint = builder.Configuration["AzureSignalR:Endpoint"];
 var signalRBuilder = builder.Services.AddSignalR();
 if (!string.IsNullOrWhiteSpace(signalREndpoint))
 {
@@ -52,9 +54,10 @@ if (!string.IsNullOrWhiteSpace(signalREndpoint))
 }
 
 // Cosmos DB -- MSI via DefaultAzureCredential; no connection string required.
-var cosmosEndpoint = builder.Configuration["Cosmos__Endpoint"];
+// App Service env var Cosmos__Endpoint maps to config key Cosmos:Endpoint
+var cosmosEndpoint = builder.Configuration["Cosmos:Endpoint"];
 if (string.IsNullOrWhiteSpace(cosmosEndpoint))
-    throw new InvalidOperationException("Cosmos__Endpoint is not configured.");
+    throw new InvalidOperationException("Cosmos:Endpoint is not configured.");
 
 var cosmosClient = new CosmosClient(cosmosEndpoint, new DefaultAzureCredential());
 builder.Services.AddSingleton(cosmosClient);
