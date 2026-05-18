@@ -2,22 +2,38 @@
 
 import { useEffect, useState } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import Card from './Card';
 import { Card as CardType } from '../lib/types';
 
-export default function GuessingPhase({ 
-  targetName, 
-  cards, 
-  isTriple, 
-  cycleInfo, 
+function SortableCardItem({ card, index }: { card: CardType; index: number }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.noun });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-4 cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
+      <div className="w-8 h-8 rounded-full bg-cyber text-black flex items-center justify-center font-bold shrink-0">{index + 1}</div>
+      <Card card={card} isSpicy={card.isSpicy} />
+    </div>
+  );
+}
+
+export default function GuessingPhase({
+  targetName,
+  cards,
+  isTriple,
+  cycleInfo,
   onSubmit,
   onTimeUp,
-}: { 
-  targetName: string; 
-  cards: CardType[]; 
-  isTriple?: boolean; 
-  cycleInfo?: string; 
+}: {
+  targetName: string;
+  cards: CardType[];
+  isTriple?: boolean;
+  cycleInfo?: string;
   onSubmit: (guessed: string[]) => void;
   onTimeUp?: (getRanked: () => string[]) => void;
 }) {
@@ -28,7 +44,6 @@ export default function GuessingPhase({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Expose current guess to parent for auto-submit on timer expiry
   useEffect(() => {
     if (onTimeUp) {
       onTimeUp(() => guess.map(c => c.noun));
@@ -37,7 +52,7 @@ export default function GuessingPhase({
 
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
-    if (active.id !== over.id) {
+    if (over && active.id !== over.id) {
       setGuess((items) => {
         const oldIndex = items.findIndex(i => i.noun === active.id);
         const newIndex = items.findIndex(i => i.noun === over.id);
@@ -48,17 +63,17 @@ export default function GuessingPhase({
 
   return (
     <div>
-      <h2 className="text-cyber text-3xl mb-2">Guess how <span className="font-bold">{targetName}</span> ranked</h2>
-      {isTriple && <p className="text-red-400 mb-6">{cycleInfo}</p>}
-      
+      <h2 className="text-cyber text-3xl mb-2">
+        How did <span className="font-bold">{targetName}</span> rank them?
+      </h2>
+      <p className="text-zinc-400 text-sm mb-4">Drag to order by what you think <strong>{targetName}</strong> values most</p>
+      {isTriple && <p className="text-red-400 mb-4">{cycleInfo}</p>}
+
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={guess.map(c => c.noun)} strategy={verticalListSortingStrategy}>
           <div className="space-y-4 mb-8">
             {guess.map((card, index) => (
-              <div key={card.noun} className="flex items-center gap-4">
-                <div className="w-8 h-8 rounded-full bg-cyber text-black flex items-center justify-center font-bold">{index + 1}</div>
-                <Card card={card} isSpicy={card.isSpicy} />
-              </div>
+              <SortableCardItem key={card.noun} card={card} index={index} />
             ))}
           </div>
         </SortableContext>

@@ -117,6 +117,7 @@ export default function GameScreen({
     connection.on('GuessResult', (result: GuessResult) => {
       setLastResult(result);
       setTimer(0);
+      autoSubmitRef.current = null; // nothing to auto-submit during discussion
       setPhase('results');
     });
 
@@ -210,7 +211,9 @@ export default function GameScreen({
         />
       )}
 
-      {phase === 'results' && lastResult && <ResultsPhase result={lastResult} />}
+      {phase === 'results' && lastResult && currentRound && (
+        <ResultsPhase result={lastResult} cards={currentRound.cards} />
+      )}
 
       {(phase === 'leaderboard' || phase === 'gameover') && (
         <>

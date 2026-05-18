@@ -34,4 +34,5 @@ export interface GuessResult {
   score: number;
   actual: string[];
   guessed: string[];
+  matchInfo: Record<string, 'exact' | 'near' | 'miss'>;
 }
