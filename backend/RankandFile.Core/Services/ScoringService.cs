@@ -2,33 +2,37 @@ namespace RankandFile.Core.Services;
 
 public class ScoringService
 {
-    public double CalculateScore(List<string> actualRanking, List<string> guessedRanking)
+    // Returns total score and per-card match detail.
+    // matchInfo: noun → "exact" | "near" | "miss"
+    public (int Score, Dictionary<string, string> MatchInfo) CalculateScore(
+        List<string> actualRanking, List<string> guessedRanking)
     {
+        var matchInfo = new Dictionary<string, string>();
         if (actualRanking.Count == 0 || actualRanking.Count != guessedRanking.Count)
-            return 0;
+            return (0, matchInfo);
 
-        int count = actualRanking.Count;
-        double score = 0;
-        bool perfect = true;
-
-        for (int i = 0; i < count; i++)
+        int score = 0;
+        for (int i = 0; i < actualRanking.Count; i++)
         {
-            string guessedCard = guessedRanking[i];
-
-            // Exact match
-            if (actualRanking[i] == guessedCard)
+            string noun = actualRanking[i];
+            int guessedPos = guessedRanking.IndexOf(noun);
+            string match;
+            if (guessedPos == i)
+            {
+                match = "exact";
+                score += 3;
+            }
+            else if (Math.Abs(guessedPos - i) == 1)
+            {
+                match = "near";
                 score += 1;
+            }
             else
-                perfect = false;
-
-            // Adjacent bonus
-            int actualPos = actualRanking.IndexOf(guessedCard);
-            if (actualPos >= 0 && Math.Abs(actualPos - i) == 1)
-                score += 0.2;
+            {
+                match = "miss";
+            }
+            matchInfo[noun] = match;
         }
-
-        if (perfect) score += 1; // Bonus
-
-        return Math.Round(score, 2);
+        return (score, matchInfo);
     }
 }

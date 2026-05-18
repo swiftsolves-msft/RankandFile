@@ -146,7 +146,7 @@ public class GameHub : Hub
         if (currentRound.ScoresThisRound.ContainsKey(Context.ConnectionId))
             return;
 
-        var score = _scoringService.CalculateScore(actualRanking, guessedRanking);
+        var (score, matchInfo) = _scoringService.CalculateScore(actualRanking, guessedRanking);
 
         currentRound.ScoresThisRound[Context.ConnectionId] = score;
 
@@ -163,7 +163,8 @@ public class GameHub : Hub
             TargetName = targetPlayer.Name,
             Score = score,
             Actual = actualRanking,
-            Guessed = guessedRanking
+            Guessed = guessedRanking,
+            MatchInfo = matchInfo
         });
 
         // Only broadcast leaderboard once everyone has submitted their guess

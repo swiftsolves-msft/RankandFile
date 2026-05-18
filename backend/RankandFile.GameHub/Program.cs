@@ -44,7 +44,13 @@ builder.Services.AddRateLimiter(options =>
 // omitting it falls back to local in-process SignalR for development.
 // App Service env var AzureSignalR__Endpoint maps to config key AzureSignalR:Endpoint
 var signalREndpoint = builder.Configuration["AzureSignalR:Endpoint"];
-var signalRBuilder = builder.Services.AddSignalR();
+var signalRBuilder = builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        // Ensure all Hub messages use camelCase so TypeScript interfaces match directly.
+        // Do NOT set DictionaryKeyPolicy — dictionary keys are ConnectionIds and must not be transformed.
+        options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
 if (!string.IsNullOrWhiteSpace(signalREndpoint))
 {
     signalRBuilder.AddAzureSignalR(options =>

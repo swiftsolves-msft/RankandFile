@@ -16,10 +16,12 @@ public class CardGeneratorService
         _spicyCards = LoadCards(Path.Combine(baseDir, "nouns", "spicy-nouns.json"), true);
     }
 
+    private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNameCaseInsensitive = true };
+
     private static List<Card> LoadCards(string path, bool isSpicy)
     {
         var json = File.ReadAllText(path);
-        var list = JsonSerializer.Deserialize<List<Card>>(json) ?? new();
+        var list = JsonSerializer.Deserialize<List<Card>>(json, _jsonOpts) ?? new();
         list.ForEach(c => c.IsSpicy = isSpicy);
         return list;
     }
