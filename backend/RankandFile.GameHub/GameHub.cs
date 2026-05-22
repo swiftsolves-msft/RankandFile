@@ -1,6 +1,5 @@
-using System.Net;
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Azure.Cosmos;
 using RankandFile.Core.Models;
 using RankandFile.Core.Repositories;
 using RankandFile.Core.Services;
@@ -11,6 +10,12 @@ public class GameHub : Hub
 {
     private const int MinPlayers = 6;
     private static readonly int[] AllowedMaxRounds = { 3, 5, 8 };
+
+    // One semaphore per active session serialises concurrent SubmitRanking /
+    // SubmitGuess calls so the Cosmos read-modify-write never races itself.
+    // This works correctly on a single App Service instance; for multi-instance
+    // deployments replace with a Redis distributed lock.
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionLocks = new();
 
     private readonly SessionRepository _repo;
     private readonly CardGeneratorService _cardGen;
@@ -117,56 +122,43 @@ public class GameHub : Hub
 
     public async Task SubmitRanking(string sessionCode, List<string> rankedNouns)
     {
-        // Same ETag retry pattern as SubmitGuess — two players can submit rankings
-        // simultaneously, causing last-write-wins to silently drop one submission.
-        const int maxAttempts = 8;
-
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        var sem = _sessionLocks.GetOrAdd(sessionCode, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync();
+        try
         {
-            var (session, etag) = await _repo.GetSessionWithETagAsync(sessionCode);
+            var session = await _repo.GetSessionAsync(sessionCode);
             if (session == null) return;
 
             var currentRound = session.Rounds.Last();
 
-            // Idempotency guard — also triggers clean exit on a successful retry.
+            // Idempotency guard — handles double-submit (manual + auto-submit at t=0).
             if (currentRound.Rankings.ContainsKey(Context.ConnectionId))
                 return;
 
             currentRound.Rankings[Context.ConnectionId] = rankedNouns;
-
-            try
-            {
-                await _repo.SaveSessionAsync(session, etag);
-            }
-            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.PreconditionFailed)
-            {
-                if (attempt < maxAttempts - 1) continue;
-                throw;
-            }
+            await _repo.SaveSessionAsync(session);
 
             if (currentRound.Rankings.Count == session.Players.Count)
                 await Clients.Group(sessionCode).SendAsync("AllRankingsSubmitted");
-
-            break;
+        }
+        finally
+        {
+            sem.Release();
         }
     }
 
     public async Task SubmitGuess(string sessionCode, string targetPlayerId, List<string> guessedRanking)
     {
-        // Use optimistic concurrency (ETag) with a retry loop to handle the race condition
-        // where two players submit their guesses simultaneously.  Without this, both reads
-        // can happen before either write, so the last upsert silently discards the other
-        // player's score and LeaderboardUpdate is never sent.
-        const int maxAttempts = 8;
-
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        var sem = _sessionLocks.GetOrAdd(sessionCode, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync();
+        try
         {
-            var (session, etag) = await _repo.GetSessionWithETagAsync(sessionCode);
+            var session = await _repo.GetSessionAsync(sessionCode);
             if (session == null) return;
 
             var currentRound = session.Rounds.Last();
 
-            // Security: validate the guesser is actually paired with this target
+            // Security: validate the guesser is actually paired with this target.
             if (!currentRound.Pairings.TryGetValue(Context.ConnectionId, out var expectedTarget)
                 || expectedTarget != targetPlayerId)
                 return;
@@ -174,8 +166,7 @@ public class GameHub : Hub
             if (!currentRound.Rankings.TryGetValue(targetPlayerId, out var actualRanking))
                 return;
 
-            // Prevent double submission — also guards against a successful retry being
-            // re-entered (e.g. if GuessResult was sent but the caller retried anyway).
+            // Idempotency guard — handles double-submit (manual + auto-submit at t=0).
             if (currentRound.ScoresThisRound.ContainsKey(Context.ConnectionId))
                 return;
 
@@ -185,19 +176,8 @@ public class GameHub : Hub
             var guesser = session.Players.First(p => p.PlayerId == Context.ConnectionId);
             guesser.TotalScore += score;
 
-            try
-            {
-                await _repo.SaveSessionAsync(session, etag);
-            }
-            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.PreconditionFailed)
-            {
-                // Another player's write landed between our read and save.
-                // Discard this in-memory copy and retry with a fresh read + new ETag.
-                if (attempt < maxAttempts - 1) continue;
-                throw; // give up after max attempts
-            }
+            await _repo.SaveSessionAsync(session);
 
-            // Save succeeded — send results to this player.
             var targetPlayer = session.Players.First(p => p.PlayerId == targetPlayerId);
             await Clients.Caller.SendAsync("GuessResult", new
             {
@@ -208,7 +188,7 @@ public class GameHub : Hub
                 MatchInfo = matchInfo
             });
 
-            // Once everyone has submitted their guess, either end the round or end the game.
+            // Once everyone has submitted, end the round or the game.
             if (currentRound.ScoresThisRound.Count == session.Players.Count)
             {
                 var sorted = session.Players.OrderByDescending(p => p.TotalScore).ToList();
@@ -224,8 +204,10 @@ public class GameHub : Hub
                     await Clients.Group(sessionCode).SendAsync("LeaderboardUpdate", sorted);
                 }
             }
-
-            break; // success — exit the retry loop
+        }
+        finally
+        {
+            sem.Release();
         }
     }
 
