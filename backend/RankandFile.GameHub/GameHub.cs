@@ -8,8 +8,8 @@ namespace RankandFile.GameHub;
 
 public class GameHub : Hub
 {
-    private const int MinPlayers = 6;
-    private static readonly int[] AllowedMaxRounds = { 3, 5, 8 };
+    private const int MinPlayers = 2;
+    private static readonly int[] AllowedMaxRounds = { 1, 2, 3 };
 
     // One semaphore per active session serialises concurrent SubmitRanking /
     // SubmitGuess calls so the Cosmos read-modify-write never races itself.
@@ -74,21 +74,26 @@ public class GameHub : Hub
         await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
     }
 
-    public async Task StartNewRound(string sessionCode, bool debugMode = false, int maxRounds = 5)
+    public async Task StartNewRound(string sessionCode, int maxRounds = 2)
     {
         var session = await _repo.GetSessionAsync(sessionCode);
         if (session == null) return;
 
-        var minPlayers = debugMode ? 2 : MinPlayers;
-        if (session.Players.Count < minPlayers)
+        if (session.Players.Count < MinPlayers)
         {
-            await Clients.Caller.SendAsync("Error", $"Need at least {minPlayers} players to start.");
+            await Clients.Caller.SendAsync("Error", $"Need at least {MinPlayers} players to start.");
             return;
         }
 
         // Lock in the round count on the very first round; ignore on subsequent calls.
         if (session.CurrentRound == 0)
-            session.MaxRounds = AllowedMaxRounds.Contains(maxRounds) ? maxRounds : 5;
+        {
+            session.MaxRounds = AllowedMaxRounds.Contains(maxRounds) ? maxRounds : 2;
+            // Broadcast the updated session so every client immediately sees the
+            // correct MaxRounds value before the first RoundStarted fires.
+            await _repo.SaveSessionAsync(session);
+            await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
+        }
 
         if (session.CurrentRound >= session.MaxRounds)
         {

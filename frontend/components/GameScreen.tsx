@@ -7,7 +7,7 @@ import GuessingPhase from './GuessingPhase';
 import ResultsPhase from './ResultsPhase';
 import Leaderboard from './Leaderboard';
 import Timer from './Timer';
-import { Card, GuessResult, Player, Round, Session } from '../lib/types';
+import { GuessResult, Player, Round, Session } from '../lib/types';
 
 interface TargetInfo {
   targetId: string;
@@ -19,11 +19,9 @@ interface TargetInfo {
 export default function GameScreen({
   session: initialSession,
   connection,
-  isDebug,
 }: {
   session: Session;
   connection: HubConnection;
-  isDebug: boolean;
 }) {
   const sessionCode = initialSession.sessionCode;
   const [phase, setPhase] = useState<'lobby' | 'ranking' | 'guessing' | 'results' | 'leaderboard' | 'gameover'>('lobby');
@@ -37,9 +35,9 @@ export default function GameScreen({
   const [serverError, setServerError] = useState<string | null>(null);
 
   // Round count — host selects before first round; locked in once game starts.
-  const ROUND_OPTIONS = [3, 5, 8] as const;
-  const [selectedRounds, setSelectedRounds] = useState<3 | 5 | 8>(5);
-  const [maxRounds, setMaxRounds] = useState<number>(initialSession.maxRounds ?? 5);
+  const ROUND_OPTIONS = [1, 2, 3] as const;
+  const [selectedRounds, setSelectedRounds] = useState<1 | 2 | 3>(2);
+  const [maxRounds, setMaxRounds] = useState<number>(initialSession.maxRounds ?? 2);
   const [roundNum, setRoundNum] = useState<number>(0);
 
   // Per-round submission tracking — used to show "waiting for partner" UI
@@ -211,7 +209,7 @@ export default function GameScreen({
 
   const handleStartRound = () => {
     // Pass selectedRounds on every call — backend only applies it on round 1.
-    connection.invoke('StartNewRound', sessionCode, isDebug, selectedRounds).catch(console.error);
+    connection.invoke('StartNewRound', sessionCode, selectedRounds).catch(console.error);
   };
 
   return (
@@ -225,7 +223,6 @@ export default function GameScreen({
       {phase === 'lobby' && (
         <div className="text-center text-zinc-400">
           <p className="text-2xl mb-2">Session: <span className="text-neon font-mono font-bold">{sessionCode}</span></p>
-          {isDebug && <p className="text-yellow-400 text-sm mb-2">Debug mode — 2-player minimum</p>}
 
           {isHost ? (
             <div className="mt-6 space-y-6">
@@ -248,7 +245,7 @@ export default function GameScreen({
                   ))}
                 </div>
                 <p className="text-zinc-500 text-xs mt-3">
-                  ~{selectedRounds * 5}–{selectedRounds * 7} minutes of play
+                  ~{selectedRounds * 4}–{selectedRounds * 6} minutes of play
                 </p>
               </div>
 

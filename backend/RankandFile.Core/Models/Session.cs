@@ -12,5 +12,5 @@ public class Session
     // Stored as List for Cosmos DB JSON round-trip compatibility.
     // Use a local HashSet when doing lookups in PairingService.
     public List<string> PreviousPairs { get; set; } = new(); // "minId-maxId"
-    public int MaxRounds { get; set; } = 5;
+    public int MaxRounds { get; set; } = 2;
 }
