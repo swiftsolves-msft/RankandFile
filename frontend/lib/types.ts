@@ -26,6 +26,7 @@ export interface Session {
   status: 'Lobby' | 'Playing' | 'Finished';
   players: Player[];
   currentRound: number;
+  maxRounds: number;
   rounds: Round[];
 }
 

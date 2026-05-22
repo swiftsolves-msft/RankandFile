@@ -36,26 +36,34 @@ export default function GameScreen({
   const [timer, setTimer] = useState(0);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  // Leaderboard arrives when all guesses are in, but we delay showing it
-  // until the discussion timer in ResultsPhase completes.
+  // Round count — host selects before first round; locked in once game starts.
+  const ROUND_OPTIONS = [3, 5, 8] as const;
+  const [selectedRounds, setSelectedRounds] = useState<3 | 5 | 8>(5);
+  const [maxRounds, setMaxRounds] = useState<number>(initialSession.maxRounds ?? 5);
+  const [roundNum, setRoundNum] = useState<number>(0);
+
+  // LeaderboardUpdate / GameOver arrive when all guesses are in, but we delay
+  // showing the next screen until the discussion timer in ResultsPhase completes.
   const [pendingLeaderboard, setPendingLeaderboard] = useState<Player[] | null>(null);
+  const [pendingIsFinal, setPendingIsFinal] = useState(false);
   const [discussionActive, setDiscussionActive] = useState(false);
   const [discussionDone, setDiscussionDone] = useState(false);
 
   const isHost = connection.connectionId === hostPlayerId;
 
-  // Transition to leaderboard once both conditions are true:
-  // 1) all guesses submitted (pendingLeaderboard set by LeaderboardUpdate)
-  // 2) discussion timer expired (discussionDone set by ResultsPhase callback)
+  // Transition to leaderboard/gameover once:
+  // 1) all guesses submitted (pendingLeaderboard populated)
+  // 2) discussion timer expired (discussionDone flagged by ResultsPhase)
   useEffect(() => {
     if (pendingLeaderboard !== null && discussionDone) {
       setLeaderboard(pendingLeaderboard);
       setPendingLeaderboard(null);
       setDiscussionActive(false);
       setDiscussionDone(false);
-      setPhase('leaderboard');
+      setPhase(pendingIsFinal ? 'gameover' : 'leaderboard');
+      setPendingIsFinal(false);
     }
-  }, [pendingLeaderboard, discussionDone]);
+  }, [pendingLeaderboard, discussionDone, pendingIsFinal]);
 
   // Ref so the timer interval can call the latest version of handleSubmit
   const autoSubmitRef = useRef<(() => void) | null>(null);
@@ -95,10 +103,12 @@ export default function GameScreen({
     connection.on('SessionUpdated', (s: Session) => {
       setPlayers(s.players);
       setHostPlayerId(s.hostPlayerId);
+      if (s.maxRounds) setMaxRounds(s.maxRounds);
     });
 
     connection.on('RoundStarted', (round: Round) => {
       setCurrentRound(round);
+      setRoundNum(round.roundNum);
       setPhase('ranking');
       setTimer(60);
       // Resolve our target from pairings
@@ -149,8 +159,11 @@ export default function GameScreen({
     });
 
     connection.on('GameOver', (finalStandings: Player[]) => {
-      setLeaderboard(finalStandings);
-      setPhase('gameover');
+      // Route through discussion pipeline same as LeaderboardUpdate —
+      // pendingIsFinal ensures we land on 'gameover' instead of 'leaderboard'.
+      setPendingLeaderboard(finalStandings);
+      setPendingIsFinal(true);
+      setDiscussionActive(true);
     });
 
     connection.on('Error', (msg: string) => {
@@ -181,7 +194,8 @@ export default function GameScreen({
   };
 
   const handleStartRound = () => {
-    connection.invoke('StartNewRound', sessionCode, isDebug).catch(console.error);
+    // Pass selectedRounds on every call — backend only applies it on round 1.
+    connection.invoke('StartNewRound', sessionCode, isDebug, selectedRounds).catch(console.error);
   };
 
   return (
@@ -196,21 +210,59 @@ export default function GameScreen({
         <div className="text-center text-zinc-400">
           <p className="text-2xl mb-2">Session: <span className="text-neon font-mono font-bold">{sessionCode}</span></p>
           {isDebug && <p className="text-yellow-400 text-sm mb-2">Debug mode — 2-player minimum</p>}
+
           {isHost ? (
-            <button
-              onClick={handleStartRound}
-              className="mt-4 px-8 py-3 bg-neon text-black font-bold text-lg rounded-xl hover:opacity-90 transition"
-            >
-              START ROUND
-            </button>
+            <div className="mt-6 space-y-6">
+              {/* Round count selector */}
+              <div className="bg-zinc-800 rounded-2xl px-8 py-5 inline-block">
+                <p className="text-zinc-300 text-sm font-semibold uppercase tracking-widest mb-4">Number of Rounds</p>
+                <div className="flex items-center gap-6 justify-center">
+                  {ROUND_OPTIONS.map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setSelectedRounds(n)}
+                      className={`w-14 h-14 rounded-xl text-xl font-bold transition border-2 ${
+                        selectedRounds === n
+                          ? 'bg-neon text-black border-neon'
+                          : 'bg-zinc-700 text-zinc-300 border-zinc-600 hover:border-neon hover:text-neon'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-zinc-500 text-xs mt-3">
+                  ~{selectedRounds * 5}–{selectedRounds * 7} minutes of play
+                </p>
+              </div>
+
+              <div>
+                <button
+                  onClick={handleStartRound}
+                  className="px-8 py-3 bg-neon text-black font-bold text-lg rounded-xl hover:opacity-90 transition"
+                >
+                  START ROUND
+                </button>
+              </div>
+            </div>
           ) : (
-            <p>Waiting for host to start the round…</p>
+            <p className="mt-4">Waiting for host to start the round…</p>
           )}
+
           <div className="mt-6 space-y-2">
             {players.map(p => (
               <div key={p.playerId} className="text-white">{p.name}</div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Round counter — shown during active gameplay and leaderboard */}
+      {roundNum > 0 && phase !== 'lobby' && phase !== 'gameover' && (
+        <div className="text-center">
+          <span className="inline-block bg-zinc-800 border border-zinc-700 rounded-full px-4 py-1 text-sm text-zinc-400 font-mono">
+            Round <span className="text-neon font-bold">{roundNum}</span> of <span className="text-cyber font-bold">{maxRounds}</span>
+          </span>
         </div>
       )}
 
@@ -244,7 +296,12 @@ export default function GameScreen({
 
       {(phase === 'leaderboard' || phase === 'gameover') && (
         <>
-          <Leaderboard players={leaderboard} isFinal={phase === 'gameover'} />
+          <Leaderboard
+            players={leaderboard}
+            isFinal={phase === 'gameover'}
+            currentRound={roundNum}
+            maxRounds={maxRounds}
+          />
           {phase === 'leaderboard' && isHost && (
             <div className="text-center mt-6">
               <button
@@ -252,6 +309,16 @@ export default function GameScreen({
                 className="px-8 py-3 bg-neon text-black font-bold text-lg rounded-xl hover:opacity-90 transition"
               >
                 START NEXT ROUND
+              </button>
+            </div>
+          )}
+          {phase === 'gameover' && (
+            <div className="text-center mt-6">
+              <button
+                onClick={() => { window.location.href = window.location.origin; }}
+                className="px-8 py-3 bg-zinc-700 text-zinc-200 font-bold text-lg rounded-xl hover:bg-zinc-600 transition"
+              >
+                Return to Home
               </button>
             </div>
           )}

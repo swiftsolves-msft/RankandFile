@@ -7,8 +7,8 @@ namespace RankandFile.GameHub;
 
 public class GameHub : Hub
 {
-    private const int MaxRounds = 5;
     private const int MinPlayers = 6;
+    private static readonly int[] AllowedMaxRounds = { 3, 5, 8 };
 
     private readonly SessionRepository _repo;
     private readonly CardGeneratorService _cardGen;
@@ -67,7 +67,7 @@ public class GameHub : Hub
         await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
     }
 
-    public async Task StartNewRound(string sessionCode, bool debugMode = false)
+    public async Task StartNewRound(string sessionCode, bool debugMode = false, int maxRounds = 5)
     {
         var session = await _repo.GetSessionAsync(sessionCode);
         if (session == null) return;
@@ -79,7 +79,11 @@ public class GameHub : Hub
             return;
         }
 
-        if (session.CurrentRound >= MaxRounds)
+        // Lock in the round count on the very first round; ignore on subsequent calls.
+        if (session.CurrentRound == 0)
+            session.MaxRounds = AllowedMaxRounds.Contains(maxRounds) ? maxRounds : 5;
+
+        if (session.CurrentRound >= session.MaxRounds)
         {
             session.Status = "Finished";
             await _repo.SaveSessionAsync(session);
@@ -167,11 +171,21 @@ public class GameHub : Hub
             MatchInfo = matchInfo
         });
 
-        // Only broadcast leaderboard once everyone has submitted their guess
+        // Once everyone has submitted their guess, either end the round or end the game.
         if (currentRound.ScoresThisRound.Count == session.Players.Count)
         {
-            await Clients.Group(sessionCode).SendAsync("LeaderboardUpdate",
-                session.Players.OrderByDescending(p => p.TotalScore).ToList());
+            var sorted = session.Players.OrderByDescending(p => p.TotalScore).ToList();
+
+            if (session.CurrentRound >= session.MaxRounds)
+            {
+                session.Status = "Finished";
+                await _repo.SaveSessionAsync(session);
+                await Clients.Group(sessionCode).SendAsync("GameOver", sorted);
+            }
+            else
+            {
+                await Clients.Group(sessionCode).SendAsync("LeaderboardUpdate", sorted);
+            }
         }
     }
 
