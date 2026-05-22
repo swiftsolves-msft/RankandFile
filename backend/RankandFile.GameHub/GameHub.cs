@@ -1,4 +1,6 @@
+using System.Net;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Azure.Cosmos;
 using RankandFile.Core.Models;
 using RankandFile.Core.Repositories;
 using RankandFile.Core.Services;
@@ -131,61 +133,79 @@ public class GameHub : Hub
 
     public async Task SubmitGuess(string sessionCode, string targetPlayerId, List<string> guessedRanking)
     {
-        var session = await _repo.GetSessionAsync(sessionCode);
-        if (session == null) return;
+        // Use optimistic concurrency (ETag) with a retry loop to handle the race condition
+        // where two players submit their guesses simultaneously.  Without this, both reads
+        // can happen before either write, so the last upsert silently discards the other
+        // player's score and LeaderboardUpdate is never sent.
+        const int maxAttempts = 8;
 
-        var currentRound = session.Rounds.Last();
-
-        // Security: validate the guesser is actually paired with this target
-        if (!currentRound.Pairings.TryGetValue(Context.ConnectionId, out var expectedTarget)
-            || expectedTarget != targetPlayerId)
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
-            return;
-        }
+            var (session, etag) = await _repo.GetSessionWithETagAsync(sessionCode);
+            if (session == null) return;
 
-        if (!currentRound.Rankings.TryGetValue(targetPlayerId, out var actualRanking))
-            return;
+            var currentRound = session.Rounds.Last();
 
-        // Prevent double submission
-        if (currentRound.ScoresThisRound.ContainsKey(Context.ConnectionId))
-            return;
+            // Security: validate the guesser is actually paired with this target
+            if (!currentRound.Pairings.TryGetValue(Context.ConnectionId, out var expectedTarget)
+                || expectedTarget != targetPlayerId)
+                return;
 
-        var (score, matchInfo) = _scoringService.CalculateScore(actualRanking, guessedRanking);
+            if (!currentRound.Rankings.TryGetValue(targetPlayerId, out var actualRanking))
+                return;
 
-        currentRound.ScoresThisRound[Context.ConnectionId] = score;
+            // Prevent double submission — also guards against a successful retry being
+            // re-entered (e.g. if GuessResult was sent but the caller retried anyway).
+            if (currentRound.ScoresThisRound.ContainsKey(Context.ConnectionId))
+                return;
 
-        var guesser = session.Players.First(p => p.PlayerId == Context.ConnectionId);
-        guesser.TotalScore += score;
+            var (score, matchInfo) = _scoringService.CalculateScore(actualRanking, guessedRanking);
 
-        var targetPlayer = session.Players.First(p => p.PlayerId == targetPlayerId);
+            currentRound.ScoresThisRound[Context.ConnectionId] = score;
+            var guesser = session.Players.First(p => p.PlayerId == Context.ConnectionId);
+            guesser.TotalScore += score;
 
-        await _repo.SaveSessionAsync(session);
-
-        // Send result only to the guesser
-        await Clients.Caller.SendAsync("GuessResult", new
-        {
-            TargetName = targetPlayer.Name,
-            Score = score,
-            Actual = actualRanking,
-            Guessed = guessedRanking,
-            MatchInfo = matchInfo
-        });
-
-        // Once everyone has submitted their guess, either end the round or end the game.
-        if (currentRound.ScoresThisRound.Count == session.Players.Count)
-        {
-            var sorted = session.Players.OrderByDescending(p => p.TotalScore).ToList();
-
-            if (session.CurrentRound >= session.MaxRounds)
+            try
             {
-                session.Status = "Finished";
-                await _repo.SaveSessionAsync(session);
-                await Clients.Group(sessionCode).SendAsync("GameOver", sorted);
+                await _repo.SaveSessionAsync(session, etag);
             }
-            else
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.PreconditionFailed)
             {
-                await Clients.Group(sessionCode).SendAsync("LeaderboardUpdate", sorted);
+                // Another player's write landed between our read and save.
+                // Discard this in-memory copy and retry with a fresh read + new ETag.
+                if (attempt < maxAttempts - 1) continue;
+                throw; // give up after max attempts
             }
+
+            // Save succeeded — send results to this player.
+            var targetPlayer = session.Players.First(p => p.PlayerId == targetPlayerId);
+            await Clients.Caller.SendAsync("GuessResult", new
+            {
+                TargetName = targetPlayer.Name,
+                Score = score,
+                Actual = actualRanking,
+                Guessed = guessedRanking,
+                MatchInfo = matchInfo
+            });
+
+            // Once everyone has submitted their guess, either end the round or end the game.
+            if (currentRound.ScoresThisRound.Count == session.Players.Count)
+            {
+                var sorted = session.Players.OrderByDescending(p => p.TotalScore).ToList();
+
+                if (session.CurrentRound >= session.MaxRounds)
+                {
+                    session.Status = "Finished";
+                    await _repo.SaveSessionAsync(session);
+                    await Clients.Group(sessionCode).SendAsync("GameOver", sorted);
+                }
+                else
+                {
+                    await Clients.Group(sessionCode).SendAsync("LeaderboardUpdate", sorted);
+                }
+            }
+
+            break; // success — exit the retry loop
         }
     }
 
