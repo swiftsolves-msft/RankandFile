@@ -113,6 +113,7 @@ export default function GameScreen({
     });
 
     connection.on('RoundStarted', (round: Round) => {
+      setServerError(null); // clear any pre-game errors (e.g. "Need at least 2 players")
       setCurrentRound(round);
       setRoundNum(round.roundNum);
       setPhase('ranking');
