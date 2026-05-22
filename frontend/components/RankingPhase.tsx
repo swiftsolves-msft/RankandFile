@@ -26,10 +26,12 @@ export default function RankingPhase({
   cards,
   onSubmit,
   onTimeUp,
+  hasSubmitted = false,
 }: {
   cards: CardType[];
   onSubmit: (ranked: string[]) => void;
   onTimeUp?: (getRanked: () => string[]) => void;
+  hasSubmitted?: boolean;
 }) {
   const [rankedCards, setRankedCards] = useState(cards);
 
@@ -59,22 +61,34 @@ export default function RankingPhase({
     <div>
       <h2 className="text-neon text-2xl mb-2">Rank the cards by importance</h2>
       <p className="text-zinc-400 text-sm mb-6">Drag to reorder — #1 is most important to you</p>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={rankedCards.map(c => c.noun)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-4">
-            {rankedCards.map((card, index) => (
-              <SortableCardItem key={card.noun} card={card} index={index} />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
 
-      <button
-        onClick={() => onSubmit(rankedCards.map(c => c.noun))}
-        className="mt-8 w-full py-4 bg-neon text-black font-bold text-xl rounded-xl hover:bg-white transition"
-      >
-        LOCK IN RANKING
-      </button>
+      <div className={hasSubmitted ? 'opacity-50 pointer-events-none' : ''}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={rankedCards.map(c => c.noun)} strategy={verticalListSortingStrategy}>
+            <div className="space-y-4">
+              {rankedCards.map((card, index) => (
+                <SortableCardItem key={card.noun} card={card} index={index} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </div>
+
+      {hasSubmitted ? (
+        <div className="mt-8 w-full py-4 rounded-xl border border-zinc-600 bg-zinc-800 text-center">
+          <div className="flex items-center justify-center gap-3 text-zinc-400">
+            <span className="animate-pulse text-neon text-lg">●</span>
+            <span className="font-semibold">Ranking locked in — waiting for others…</span>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => onSubmit(rankedCards.map(c => c.noun))}
+          className="mt-8 w-full py-4 bg-neon text-black font-bold text-xl rounded-xl hover:bg-white transition"
+        >
+          LOCK IN RANKING
+        </button>
+      )}
     </div>
   );
 }

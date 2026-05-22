@@ -117,18 +117,38 @@ public class GameHub : Hub
 
     public async Task SubmitRanking(string sessionCode, List<string> rankedNouns)
     {
-        var session = await _repo.GetSessionAsync(sessionCode);
-        if (session == null) return;
+        // Same ETag retry pattern as SubmitGuess — two players can submit rankings
+        // simultaneously, causing last-write-wins to silently drop one submission.
+        const int maxAttempts = 8;
 
-        var currentRound = session.Rounds.Last();
-        currentRound.Rankings[Context.ConnectionId] = rankedNouns;
-
-        if (currentRound.Rankings.Count == session.Players.Count)
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
-            await Clients.Group(sessionCode).SendAsync("AllRankingsSubmitted");
-        }
+            var (session, etag) = await _repo.GetSessionWithETagAsync(sessionCode);
+            if (session == null) return;
 
-        await _repo.SaveSessionAsync(session);
+            var currentRound = session.Rounds.Last();
+
+            // Idempotency guard — also triggers clean exit on a successful retry.
+            if (currentRound.Rankings.ContainsKey(Context.ConnectionId))
+                return;
+
+            currentRound.Rankings[Context.ConnectionId] = rankedNouns;
+
+            try
+            {
+                await _repo.SaveSessionAsync(session, etag);
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.PreconditionFailed)
+            {
+                if (attempt < maxAttempts - 1) continue;
+                throw;
+            }
+
+            if (currentRound.Rankings.Count == session.Players.Count)
+                await Clients.Group(sessionCode).SendAsync("AllRankingsSubmitted");
+
+            break;
+        }
     }
 
     public async Task SubmitGuess(string sessionCode, string targetPlayerId, List<string> guessedRanking)

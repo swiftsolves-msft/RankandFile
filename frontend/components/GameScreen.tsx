@@ -42,6 +42,11 @@ export default function GameScreen({
   const [maxRounds, setMaxRounds] = useState<number>(initialSession.maxRounds ?? 5);
   const [roundNum, setRoundNum] = useState<number>(0);
 
+  // Per-round submission tracking — used to show "waiting for partner" UI
+  // without changing phase or clearing timer until the server confirms all done.
+  const [hasSubmittedRanking, setHasSubmittedRanking] = useState(false);
+  const [hasSubmittedGuess, setHasSubmittedGuess] = useState(false);
+
   // LeaderboardUpdate / GameOver arrive when all guesses are in, but we delay
   // showing the next screen until the discussion timer in ResultsPhase completes.
   const [pendingLeaderboard, setPendingLeaderboard] = useState<Player[] | null>(null);
@@ -84,16 +89,19 @@ export default function GameScreen({
     return () => clearInterval(id);
   }, [timer]);
 
-  // Callback registered by RankingPhase/GuessingPhase so we can auto-submit on timeout
+  // Callback registered by RankingPhase/GuessingPhase so we can auto-submit on timeout.
+  // Phase changes are NOT done here — we wait for the server to confirm all players
+  // are done (AllRankingsSubmitted / LeaderboardUpdate / GameOver).
   const handleTimeUp = useCallback((getRanked: () => string[]) => {
     autoSubmitRef.current = () => {
       const ranked = getRanked();
       if (phase === 'ranking') {
         connection.invoke('SubmitRanking', sessionCode, ranked).catch(console.error);
-        setPhase('guessing');
+        setHasSubmittedRanking(true);
       } else if (phase === 'guessing') {
         if (targetInfo) {
           connection.invoke('SubmitGuess', sessionCode, targetInfo.targetId, ranked).catch(console.error);
+          setHasSubmittedGuess(true);
         }
       }
     };
@@ -111,6 +119,8 @@ export default function GameScreen({
       setRoundNum(round.roundNum);
       setPhase('ranking');
       setTimer(60);
+      setHasSubmittedRanking(false);
+      setHasSubmittedGuess(false);
       // Resolve our target from pairings
       const myId = connection.connectionId;
       if (myId && round.pairings) {
@@ -144,23 +154,28 @@ export default function GameScreen({
     });
 
     connection.on('GuessResult', (result: GuessResult) => {
+      // Store the result data only — do NOT change phase or clear the timer.
+      // We stay in guessing phase (showing "waiting for partner") until
+      // LeaderboardUpdate/GameOver confirms all players have submitted.
       setLastResult(result);
-      setTimer(0);
-      autoSubmitRef.current = null;
-      setDiscussionActive(false); // wait for partner before starting discussion timer
-      setPhase('results');
     });
 
     connection.on('LeaderboardUpdate', (lb: Player[]) => {
-      // Don't change phase — store the data and start the discussion timer.
-      // ResultsPhase transitions to leaderboard after the discussion period ends.
+      // All players have submitted — now advance to results for everyone simultaneously.
+      autoSubmitRef.current = null;
+      setTimer(0);
+      setHasSubmittedGuess(false);
+      setPhase('results');
       setPendingLeaderboard(lb);
       setDiscussionActive(true);
     });
 
     connection.on('GameOver', (finalStandings: Player[]) => {
-      // Route through discussion pipeline same as LeaderboardUpdate —
-      // pendingIsFinal ensures we land on 'gameover' instead of 'leaderboard'.
+      // Same as LeaderboardUpdate but lands on 'gameover' after discussion.
+      autoSubmitRef.current = null;
+      setTimer(0);
+      setHasSubmittedGuess(false);
+      setPhase('results');
       setPendingLeaderboard(finalStandings);
       setPendingIsFinal(true);
       setDiscussionActive(true);
@@ -183,14 +198,15 @@ export default function GameScreen({
 
   const handleSubmitRanking = (ranked: string[]) => {
     connection.invoke('SubmitRanking', sessionCode, ranked).catch(console.error);
-    setPhase('guessing');
-    setTimer(60);
+    setHasSubmittedRanking(true);
+    // Phase stays 'ranking' and timer keeps running until AllRankingsSubmitted fires.
   };
 
   const handleSubmitGuess = (guessed: string[]) => {
     if (!targetInfo) return;
     connection.invoke('SubmitGuess', sessionCode, targetInfo.targetId, guessed).catch(console.error);
-    setTimer(0);
+    setHasSubmittedGuess(true);
+    // Timer keeps running until LeaderboardUpdate/GameOver signals everyone is done.
   };
 
   const handleStartRound = () => {
@@ -271,17 +287,19 @@ export default function GameScreen({
           cards={currentRound.cards}
           onSubmit={handleSubmitRanking}
           onTimeUp={handleTimeUp}
+          hasSubmitted={hasSubmittedRanking}
         />
       )}
 
       {phase === 'guessing' && currentRound && targetInfo && (
-        <GuessingPhase 
+        <GuessingPhase
           targetName={targetInfo.targetName}
           cards={currentRound.cards}
           isTriple={targetInfo.isTriple}
           cycleInfo={targetInfo.cycleInfo}
           onSubmit={handleSubmitGuess}
           onTimeUp={handleTimeUp}
+          hasSubmitted={hasSubmittedGuess}
         />
       )}
 

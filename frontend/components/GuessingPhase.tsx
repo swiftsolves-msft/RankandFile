@@ -29,6 +29,7 @@ export default function GuessingPhase({
   cycleInfo,
   onSubmit,
   onTimeUp,
+  hasSubmitted = false,
 }: {
   targetName: string;
   cards: CardType[];
@@ -36,6 +37,7 @@ export default function GuessingPhase({
   cycleInfo?: string;
   onSubmit: (guessed: string[]) => void;
   onTimeUp?: (getRanked: () => string[]) => void;
+  hasSubmitted?: boolean;
 }) {
   const [guess, setGuess] = useState(cards);
 
@@ -69,22 +71,33 @@ export default function GuessingPhase({
       <p className="text-zinc-400 text-sm mb-4">Drag to order by what you think <strong>{targetName}</strong> values most</p>
       {isTriple && <p className="text-red-400 mb-4">{cycleInfo}</p>}
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={guess.map(c => c.noun)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-4 mb-8">
-            {guess.map((card, index) => (
-              <SortableCardItem key={card.noun} card={card} index={index} />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+      <div className={hasSubmitted ? 'opacity-50 pointer-events-none' : ''}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={guess.map(c => c.noun)} strategy={verticalListSortingStrategy}>
+            <div className="space-y-4 mb-8">
+              {guess.map((card, index) => (
+                <SortableCardItem key={card.noun} card={card} index={index} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </div>
 
-      <button
-        onClick={() => onSubmit(guess.map(c => c.noun))}
-        className="w-full py-4 bg-cyber text-black font-bold text-xl rounded-xl hover:bg-white transition"
-      >
-        SUBMIT GUESS
-      </button>
+      {hasSubmitted ? (
+        <div className="w-full py-4 rounded-xl border border-zinc-600 bg-zinc-800 text-center">
+          <div className="flex items-center justify-center gap-3 text-zinc-400">
+            <span className="animate-pulse text-cyber text-lg">●</span>
+            <span className="font-semibold">Guess submitted — waiting for others…</span>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => onSubmit(guess.map(c => c.noun))}
+          className="w-full py-4 bg-cyber text-black font-bold text-xl rounded-xl hover:bg-white transition"
+        >
+          SUBMIT GUESS
+        </button>
+      )}
     </div>
   );
 }
