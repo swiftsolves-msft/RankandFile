@@ -90,53 +90,64 @@ public class GameHub : Hub
 
     public async Task StartNewRound(string sessionCode, int maxRounds = 2)
     {
-        var session = await _repo.GetSessionAsync(sessionCode);
-        if (session == null) return;
-
-        if (session.Players.Count < MinPlayers)
+        try
         {
-            await Clients.Caller.SendAsync("Error", $"Need at least {MinPlayers} players to start.");
-            return;
-        }
+            var session = await _repo.GetSessionAsync(sessionCode);
+            if (session == null)
+            {
+                await Clients.Caller.SendAsync("Error", "Session not found.");
+                return;
+            }
 
-        // Lock in the round count on the very first round; ignore on subsequent calls.
-        if (session.CurrentRound == 0)
-        {
-            session.MaxRounds = AllowedMaxRounds.Contains(maxRounds) ? maxRounds : 2;
-            // Broadcast the updated session so every client immediately sees the
-            // correct MaxRounds value before the first RoundStarted fires.
+            if (session.Players.Count < MinPlayers)
+            {
+                await Clients.Caller.SendAsync("Error", $"Need at least {MinPlayers} players to start.");
+                return;
+            }
+
+            // Lock in the round count on the very first round; ignore on subsequent calls.
+            if (session.CurrentRound == 0)
+            {
+                session.MaxRounds = AllowedMaxRounds.Contains(maxRounds) ? maxRounds : 2;
+                // Broadcast the updated session so every client immediately sees the
+                // correct MaxRounds value before the first RoundStarted fires.
+                await _repo.SaveSessionAsync(session);
+                await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
+            }
+
+            if (session.CurrentRound >= session.MaxRounds)
+            {
+                session.Status = "Finished";
+                await _repo.SaveSessionAsync(session);
+                await Clients.Group(sessionCode).SendAsync("GameOver",
+                    session.Players.OrderByDescending(p => p.TotalScore).ToList());
+                return;
+            }
+
+            session.CurrentRound++;
+            var round = new Round { RoundNum = session.CurrentRound };
+
+            round.Cards = _cardGen.GenerateRoundCards();
+
+            var lookup = new HashSet<string>(session.PreviousPairs);
+            var (pairings, triple) = _pairingService.CreatePairings(session.Players, lookup);
+            round.Pairings = pairings;
+            round.Triple = triple;
+
+            // Persist updated previous pairs back to the list
+            session.PreviousPairs = lookup.ToList();
+
+            session.Rounds.Add(round);
+            session.Status = "Playing";
+
             await _repo.SaveSessionAsync(session);
-            await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
-        }
 
-        if (session.CurrentRound >= session.MaxRounds)
+            await Clients.Group(sessionCode).SendAsync("RoundStarted", round);
+        }
+        catch (Exception ex)
         {
-            session.Status = "Finished";
-            await _repo.SaveSessionAsync(session);
-            await Clients.Group(sessionCode).SendAsync("GameOver",
-                session.Players.OrderByDescending(p => p.TotalScore).ToList());
-            return;
+            await Clients.Caller.SendAsync("Error", $"Failed to start round: {ex.Message}");
         }
-
-        session.CurrentRound++;
-        var round = new Round { RoundNum = session.CurrentRound };
-
-        round.Cards = _cardGen.GenerateRoundCards();
-
-        var lookup = new HashSet<string>(session.PreviousPairs);
-        var (pairings, triple) = _pairingService.CreatePairings(session.Players, lookup);
-        round.Pairings = pairings;
-        round.Triple = triple;
-
-        // Persist updated previous pairs back to the list
-        session.PreviousPairs = lookup.ToList();
-
-        session.Rounds.Add(round);
-        session.Status = "Playing";
-
-        await _repo.SaveSessionAsync(session);
-
-        await Clients.Group(sessionCode).SendAsync("RoundStarted", round);
     }
 
     public async Task SubmitRanking(string sessionCode, List<string> rankedNouns)
@@ -146,7 +157,17 @@ public class GameHub : Hub
         try
         {
             var session = await _repo.GetSessionAsync(sessionCode);
-            if (session == null) return;
+            if (session == null)
+            {
+                await Clients.Caller.SendAsync("Error", "Session not found when submitting ranking.");
+                return;
+            }
+
+            if (session.Rounds.Count == 0)
+            {
+                await Clients.Caller.SendAsync("Error", "No active round found for ranking submission.");
+                return;
+            }
 
             var currentRound = session.Rounds.Last();
 
@@ -159,6 +180,10 @@ public class GameHub : Hub
 
             if (currentRound.Rankings.Count == session.Players.Count)
                 await Clients.Group(sessionCode).SendAsync("AllRankingsSubmitted");
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("Error", $"Failed to submit ranking: {ex.Message}");
         }
         finally
         {
@@ -173,17 +198,35 @@ public class GameHub : Hub
         try
         {
             var session = await _repo.GetSessionAsync(sessionCode);
-            if (session == null) return;
+            if (session == null)
+            {
+                await Clients.Caller.SendAsync("Error", "Session not found when submitting guess.");
+                return;
+            }
+
+            if (session.Rounds.Count == 0)
+            {
+                await Clients.Caller.SendAsync("Error", "No active round found for guess submission.");
+                return;
+            }
 
             var currentRound = session.Rounds.Last();
 
             // Security: validate the guesser is actually paired with this target.
             if (!currentRound.Pairings.TryGetValue(Context.ConnectionId, out var expectedTarget)
                 || expectedTarget != targetPlayerId)
+            {
+                await Clients.Caller.SendAsync("Error",
+                    $"Pairing mismatch: {Context.ConnectionId} is not paired with {targetPlayerId}. Expected target: {expectedTarget ?? "(none)"}");
                 return;
+            }
 
             if (!currentRound.Rankings.TryGetValue(targetPlayerId, out var actualRanking))
+            {
+                await Clients.Caller.SendAsync("Error",
+                    $"Target player {targetPlayerId} has not submitted a ranking yet.");
                 return;
+            }
 
             // Idempotency guard — handles double-submit (manual + auto-submit at t=0).
             if (currentRound.ScoresThisRound.ContainsKey(Context.ConnectionId))
@@ -232,6 +275,10 @@ public class GameHub : Hub
                     await Clients.Group(sessionCode).SendAsync("LeaderboardUpdate", sorted);
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("Error", $"Failed to submit guess: {ex.Message}");
         }
         finally
         {

@@ -217,6 +217,10 @@ export default function GameScreen({
 
     connection.on('Error', (msg: string) => {
       setServerError(msg);
+      // Reset submission flags so the player can retry instead of being
+      // stuck on "waiting for others…" after a server-side failure.
+      setHasSubmittedRanking(false);
+      setHasSubmittedGuess(false);
     });
 
     return () => {
