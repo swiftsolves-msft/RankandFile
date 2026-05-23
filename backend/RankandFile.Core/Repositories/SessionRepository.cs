@@ -17,7 +17,15 @@ public class SessionRepository
         var query = new QueryDefinition("SELECT * FROM c WHERE c.sessionCode = @code")
             .WithParameter("@code", sessionCode);
 
-        var iterator = _container.GetItemQueryIterator<Session>(query);
+        // Pin to the session's partition so Cosmos uses session consistency
+        // (read-your-own-writes) rather than a cross-partition scatter-gather.
+        var options = new QueryRequestOptions
+        {
+            PartitionKey = new PartitionKey(sessionCode),
+            MaxItemCount = 1,
+        };
+
+        var iterator = _container.GetItemQueryIterator<Session>(query, requestOptions: options);
         if (iterator.HasMoreResults)
         {
             var response = await iterator.ReadNextAsync();
