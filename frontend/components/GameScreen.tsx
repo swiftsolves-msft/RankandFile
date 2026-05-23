@@ -94,39 +94,56 @@ export default function GameScreen({
   // Ref so the timer interval can call the latest version of handleSubmit
   const autoSubmitRef = useRef<(() => void) | null>(null);
 
-  // Timer countdown
+  // Refs that always hold the latest phase/targetInfo — never stale in closures
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  const targetInfoRef = useRef(targetInfo);
+  targetInfoRef.current = targetInfo;
+  // True while a timer is actively counting down (distinguishes expiry from initial timer=0)
+  const countingRef = useRef(false);
+
+  // Timer countdown — state updater is pure (no side effects inside it)
   useEffect(() => {
     if (timer <= 0) return;
+    countingRef.current = true;
     const id = setInterval(() => {
       setTimer(prev => {
-        if (prev <= 1) {
-          clearInterval(id);
-          autoSubmitRef.current?.();
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(id); return 0; }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(id);
   }, [timer]);
 
+  // Fire auto-submit when the countdown reaches 0.
+  // Kept as a separate useEffect so side-effects (invoke, setState) are legal here.
+  useEffect(() => {
+    if (timer === 0 && countingRef.current) {
+      countingRef.current = false;
+      autoSubmitRef.current?.();
+    }
+  }, [timer]);
+
   // Callback registered by RankingPhase/GuessingPhase so we can auto-submit on timeout.
+  // Reads phase/targetInfo from refs (always current) — no stale-closure risk.
   // Phase changes are NOT done here — we wait for the server to confirm all players
   // are done (AllRankingsSubmitted / LeaderboardUpdate / GameOver).
   const handleTimeUp = useCallback((getRanked: () => string[]) => {
     autoSubmitRef.current = () => {
       const ranked = getRanked();
-      if (phase === 'ranking') {
+      if (phaseRef.current === 'ranking') {
         connection.invoke('SubmitRanking', sessionCode, ranked).catch(console.error);
         setHasSubmittedRanking(true);
-      } else if (phase === 'guessing') {
-        if (targetInfo) {
-          connection.invoke('SubmitGuess', sessionCode, targetInfo.targetId, ranked).catch(console.error);
+      } else if (phaseRef.current === 'guessing') {
+        const ti = targetInfoRef.current;
+        if (ti) {
+          connection.invoke('SubmitGuess', sessionCode, ti.targetId, ranked).catch(console.error);
           setHasSubmittedGuess(true);
         }
       }
     };
-  }, [phase, connection, sessionCode, targetInfo]);
+  // connection and sessionCode are stable after mount; phase/targetInfo read via refs
+  }, [connection, sessionCode]);
 
   useEffect(() => {
     connection.on('SessionUpdated', (s: Session) => {
