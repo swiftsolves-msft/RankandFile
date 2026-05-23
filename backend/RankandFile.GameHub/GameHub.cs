@@ -33,45 +33,59 @@ public class GameHub : Hub
 
     public async Task JoinSession(string sessionCode, string playerName)
     {
-        var session = await _repo.GetSessionAsync(sessionCode);
-        if (session == null)
+        try
         {
-            await Clients.Caller.SendAsync("Error", $"Session '{sessionCode}' not found.");
-            return;
+            var session = await _repo.GetSessionAsync(sessionCode);
+            if (session == null)
+            {
+                await Clients.Caller.SendAsync("Error", $"Session '{sessionCode}' not found.");
+                return;
+            }
+
+            var player = new Player { Name = playerName, PlayerId = Context.ConnectionId };
+            if (!session.Players.Any(p => p.PlayerId == player.PlayerId))
+                session.Players.Add(player);
+
+            await Groups.AddToGroupAsync(Context.ConnectionId, sessionCode);
+            await _repo.SaveSessionAsync(session);
+
+            await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
         }
-
-        var player = new Player { Name = playerName, PlayerId = Context.ConnectionId };
-        if (!session.Players.Any(p => p.PlayerId == player.PlayerId))
-            session.Players.Add(player);
-
-        await Groups.AddToGroupAsync(Context.ConnectionId, sessionCode);
-        await _repo.SaveSessionAsync(session);
-
-        await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("Error", $"Failed to join session: {ex.Message}");
+        }
     }
 
     public async Task CreateSession(string playerName)
     {
-        // Retry until we get an unused code (collision protection)
-        string sessionCode;
-        do
+        try
         {
-            sessionCode = GenerateSessionCode();
-        } while (await _repo.GetSessionAsync(sessionCode) != null);
+            // Retry until we get an unused code (collision protection)
+            string sessionCode;
+            do
+            {
+                sessionCode = GenerateSessionCode();
+            } while (await _repo.GetSessionAsync(sessionCode) != null);
 
-        var session = new Session
+            var session = new Session
+            {
+                SessionCode = sessionCode,
+                HostPlayerId = Context.ConnectionId,
+            };
+
+            var player = new Player { Name = playerName, PlayerId = Context.ConnectionId };
+            session.Players.Add(player);
+
+            await Groups.AddToGroupAsync(Context.ConnectionId, sessionCode);
+            await _repo.SaveSessionAsync(session);
+
+            await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
+        }
+        catch (Exception ex)
         {
-            SessionCode = sessionCode,
-            HostPlayerId = Context.ConnectionId,
-        };
-
-        var player = new Player { Name = playerName, PlayerId = Context.ConnectionId };
-        session.Players.Add(player);
-
-        await Groups.AddToGroupAsync(Context.ConnectionId, sessionCode);
-        await _repo.SaveSessionAsync(session);
-
-        await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
+            await Clients.Caller.SendAsync("Error", $"Failed to create session: {ex.Message}");
+        }
     }
 
     public async Task StartNewRound(string sessionCode, int maxRounds = 2)
@@ -178,22 +192,31 @@ public class GameHub : Hub
             var (score, matchInfo) = _scoringService.CalculateScore(actualRanking, guessedRanking);
 
             currentRound.ScoresThisRound[Context.ConnectionId] = score;
-            var guesser = session.Players.First(p => p.PlayerId == Context.ConnectionId);
-            guesser.TotalScore += score;
+
+            // Update the guesser's cumulative score (defensive null-check).
+            var guesser = session.Players.FirstOrDefault(p => p.PlayerId == Context.ConnectionId);
+            if (guesser != null)
+                guesser.TotalScore += score;
 
             await _repo.SaveSessionAsync(session);
 
-            var targetPlayer = session.Players.First(p => p.PlayerId == targetPlayerId);
-            await Clients.Caller.SendAsync("GuessResult", new
+            // Send the per-player result notification (cosmetic — skip gracefully if
+            // the target player record is somehow missing; game progression continues).
+            var targetPlayer = session.Players.FirstOrDefault(p => p.PlayerId == targetPlayerId);
+            if (targetPlayer != null)
             {
-                TargetName = targetPlayer.Name,
-                Score = score,
-                Actual = actualRanking,
-                Guessed = guessedRanking,
-                MatchInfo = matchInfo
-            });
+                await Clients.Caller.SendAsync("GuessResult", new
+                {
+                    TargetName = targetPlayer.Name,
+                    Score = score,
+                    Actual = actualRanking,
+                    Guessed = guessedRanking,
+                    MatchInfo = matchInfo
+                });
+            }
 
             // Once everyone has submitted, end the round or the game.
+            // This runs regardless of whether GuessResult could be sent above.
             if (currentRound.ScoresThisRound.Count == session.Players.Count)
             {
                 var sorted = session.Players.OrderByDescending(p => p.TotalScore).ToList();

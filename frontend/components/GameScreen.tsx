@@ -52,6 +52,9 @@ export default function GameScreen({
   const [discussionActive, setDiscussionActive] = useState(false);
   const [discussionDone, setDiscussionDone] = useState(false);
 
+  // Ref keeps current players without triggering handler re-registration
+  const playersRef = useRef<Player[]>(initialSession.players);
+
   const isHost = connection.connectionId === hostPlayerId;
 
   // Transition to leaderboard/gameover once:
@@ -67,6 +70,26 @@ export default function GameScreen({
       setPendingIsFinal(false);
     }
   }, [pendingLeaderboard, discussionDone, pendingIsFinal]);
+
+  // Fallback: if targetInfo wasn't resolved during RoundStarted (e.g. handler was
+  // temporarily unregistered during a players update), re-resolve it here when the
+  // guessing phase actually begins.
+  useEffect(() => {
+    if (phase !== 'guessing' || !currentRound || targetInfo) return;
+    const myId = connection.connectionId;
+    if (!myId || !currentRound.pairings) return;
+    const targetId = currentRound.pairings[myId];
+    if (!targetId) return;
+    const targetPlayer = playersRef.current.find(p => p.playerId === targetId);
+    setTargetInfo({
+      targetId,
+      targetName: targetPlayer?.name ?? '(unknown)',
+      isTriple: !!currentRound.triple,
+      cycleInfo: currentRound.triple
+        ? `Triple round — you guess ${targetPlayer?.name ?? targetId}'s ranking.`
+        : undefined,
+    });
+  }, [phase, currentRound, targetInfo, connection]);
 
   // Ref so the timer interval can call the latest version of handleSubmit
   const autoSubmitRef = useRef<(() => void) | null>(null);
@@ -107,6 +130,7 @@ export default function GameScreen({
 
   useEffect(() => {
     connection.on('SessionUpdated', (s: Session) => {
+      playersRef.current = s.players;
       setPlayers(s.players);
       setHostPlayerId(s.hostPlayerId);
       if (s.maxRounds) setMaxRounds(s.maxRounds);
@@ -120,23 +144,17 @@ export default function GameScreen({
       setTimer(60);
       setHasSubmittedRanking(false);
       setHasSubmittedGuess(false);
-      // Resolve our target from pairings
+      setTargetInfo(null); // reset so fallback effect can re-resolve for guessing phase
+      // Resolve our target from pairings using ref (avoids stale closure on players state)
       const myId = connection.connectionId;
       if (myId && round.pairings) {
         const targetId = round.pairings[myId];
         if (targetId) {
-          const targetPlayer = players.find(p => p.playerId === targetId);
+          const targetPlayer = playersRef.current.find(p => p.playerId === targetId);
           const isTriple = !!round.triple;
-          let cycleInfo: string | undefined;
-          if (isTriple && round.triple) {
-            const idx = round.triple.indexOf(myId);
-            const targetIdx = round.triple.indexOf(targetId);
-            const targetName = targetPlayer?.name ?? targetId;
-            cycleInfo = `You are in a guessing cycle. You guess ${targetName}.`;
-            void cycleInfo;
-            cycleInfo = `Triple round — you guess ${targetName}'s ranking.`;
-            void idx; void targetIdx;
-          }
+          const cycleInfo = isTriple
+            ? `Triple round — you guess ${targetPlayer?.name ?? targetId}'s ranking.`
+            : undefined;
           setTargetInfo({
             targetId,
             targetName: targetPlayer?.name ?? '(unknown)',
@@ -193,7 +211,10 @@ export default function GameScreen({
       connection.off('GameOver');
       connection.off('Error');
     };
-  }, [connection, players, sessionCode]);
+  // Intentionally omit `players` — use playersRef for name lookups to avoid
+  // tearing down and re-registering all handlers on every SessionUpdated.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connection, sessionCode]);
 
   const handleSubmitRanking = (ranked: string[]) => {
     connection.invoke('SubmitRanking', sessionCode, ranked).catch(console.error);
