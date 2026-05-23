@@ -18,7 +18,11 @@ export default function Lobby({
 
   return (
     <div className="max-w-md mx-auto bg-zinc-900 rounded-3xl p-8 border border-neon/30">
-      <h2 className="text-3xl font-bold text-neon mb-8 text-center">Join or Create Session</h2>
+      <h2 className="text-3xl font-bold mb-8 text-center">
+        <span className="text-neon">HOST</span>
+        <span className="text-zinc-400"> or </span>
+        <span className="text-cyber">JOIN</span>
+      </h2>
 
       {!isConnected && (
         <p className="text-zinc-400 text-center mb-4 text-sm">Connecting to server…</p>
@@ -39,7 +43,7 @@ export default function Lobby({
           disabled={!canAct}
           className="py-6 bg-neon text-black font-bold text-xl rounded-2xl hover:scale-105 transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          CREATE SESSION
+          HOST
         </button>
 
         <div className="flex flex-col gap-2">
