@@ -52,6 +52,9 @@ export default function GameScreen({
   const [discussionActive, setDiscussionActive] = useState(false);
   const [discussionDone, setDiscussionDone] = useState(false);
 
+  // Ref keeps current players without triggering handler re-registration
+  const playersRef = useRef<Player[]>(initialSession.players);
+
   const isHost = connection.connectionId === hostPlayerId;
 
   // Transition to leaderboard/gameover once:
@@ -68,45 +71,83 @@ export default function GameScreen({
     }
   }, [pendingLeaderboard, discussionDone, pendingIsFinal]);
 
+  // Fallback: if targetInfo wasn't resolved during RoundStarted (e.g. handler was
+  // temporarily unregistered during a players update), re-resolve it here when the
+  // guessing phase actually begins.
+  useEffect(() => {
+    if (phase !== 'guessing' || !currentRound || targetInfo) return;
+    const myId = connection.connectionId;
+    if (!myId || !currentRound.pairings) return;
+    const targetId = currentRound.pairings[myId];
+    if (!targetId) return;
+    const targetPlayer = playersRef.current.find(p => p.playerId === targetId);
+    setTargetInfo({
+      targetId,
+      targetName: targetPlayer?.name ?? '(unknown)',
+      isTriple: !!currentRound.triple,
+      cycleInfo: currentRound.triple
+        ? `Triple round — you guess ${targetPlayer?.name ?? targetId}'s ranking.`
+        : undefined,
+    });
+  }, [phase, currentRound, targetInfo, connection]);
+
   // Ref so the timer interval can call the latest version of handleSubmit
   const autoSubmitRef = useRef<(() => void) | null>(null);
 
-  // Timer countdown
+  // Refs that always hold the latest phase/targetInfo — never stale in closures
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  const targetInfoRef = useRef(targetInfo);
+  targetInfoRef.current = targetInfo;
+  // True while a timer is actively counting down (distinguishes expiry from initial timer=0)
+  const countingRef = useRef(false);
+
+  // Timer countdown — state updater is pure (no side effects inside it)
   useEffect(() => {
     if (timer <= 0) return;
+    countingRef.current = true;
     const id = setInterval(() => {
       setTimer(prev => {
-        if (prev <= 1) {
-          clearInterval(id);
-          autoSubmitRef.current?.();
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(id); return 0; }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(id);
   }, [timer]);
 
+  // Fire auto-submit when the countdown reaches 0.
+  // Kept as a separate useEffect so side-effects (invoke, setState) are legal here.
+  useEffect(() => {
+    if (timer === 0 && countingRef.current) {
+      countingRef.current = false;
+      autoSubmitRef.current?.();
+    }
+  }, [timer]);
+
   // Callback registered by RankingPhase/GuessingPhase so we can auto-submit on timeout.
+  // Reads phase/targetInfo from refs (always current) — no stale-closure risk.
   // Phase changes are NOT done here — we wait for the server to confirm all players
   // are done (AllRankingsSubmitted / LeaderboardUpdate / GameOver).
   const handleTimeUp = useCallback((getRanked: () => string[]) => {
     autoSubmitRef.current = () => {
       const ranked = getRanked();
-      if (phase === 'ranking') {
+      if (phaseRef.current === 'ranking') {
         connection.invoke('SubmitRanking', sessionCode, ranked).catch(console.error);
         setHasSubmittedRanking(true);
-      } else if (phase === 'guessing') {
-        if (targetInfo) {
-          connection.invoke('SubmitGuess', sessionCode, targetInfo.targetId, ranked).catch(console.error);
+      } else if (phaseRef.current === 'guessing') {
+        const ti = targetInfoRef.current;
+        if (ti) {
+          connection.invoke('SubmitGuess', sessionCode, ti.targetId, ranked).catch(console.error);
           setHasSubmittedGuess(true);
         }
       }
     };
-  }, [phase, connection, sessionCode, targetInfo]);
+  // connection and sessionCode are stable after mount; phase/targetInfo read via refs
+  }, [connection, sessionCode]);
 
   useEffect(() => {
     connection.on('SessionUpdated', (s: Session) => {
+      playersRef.current = s.players;
       setPlayers(s.players);
       setHostPlayerId(s.hostPlayerId);
       if (s.maxRounds) setMaxRounds(s.maxRounds);
@@ -120,23 +161,17 @@ export default function GameScreen({
       setTimer(60);
       setHasSubmittedRanking(false);
       setHasSubmittedGuess(false);
-      // Resolve our target from pairings
+      setTargetInfo(null); // reset so fallback effect can re-resolve for guessing phase
+      // Resolve our target from pairings using ref (avoids stale closure on players state)
       const myId = connection.connectionId;
       if (myId && round.pairings) {
         const targetId = round.pairings[myId];
         if (targetId) {
-          const targetPlayer = players.find(p => p.playerId === targetId);
+          const targetPlayer = playersRef.current.find(p => p.playerId === targetId);
           const isTriple = !!round.triple;
-          let cycleInfo: string | undefined;
-          if (isTriple && round.triple) {
-            const idx = round.triple.indexOf(myId);
-            const targetIdx = round.triple.indexOf(targetId);
-            const targetName = targetPlayer?.name ?? targetId;
-            cycleInfo = `You are in a guessing cycle. You guess ${targetName}.`;
-            void cycleInfo;
-            cycleInfo = `Triple round — you guess ${targetName}'s ranking.`;
-            void idx; void targetIdx;
-          }
+          const cycleInfo = isTriple
+            ? `Triple round — you guess ${targetPlayer?.name ?? targetId}'s ranking.`
+            : undefined;
           setTargetInfo({
             targetId,
             targetName: targetPlayer?.name ?? '(unknown)',
@@ -182,6 +217,10 @@ export default function GameScreen({
 
     connection.on('Error', (msg: string) => {
       setServerError(msg);
+      // Reset submission flags so the player can retry instead of being
+      // stuck on "waiting for others…" after a server-side failure.
+      setHasSubmittedRanking(false);
+      setHasSubmittedGuess(false);
     });
 
     return () => {
@@ -193,7 +232,10 @@ export default function GameScreen({
       connection.off('GameOver');
       connection.off('Error');
     };
-  }, [connection, players, sessionCode]);
+  // Intentionally omit `players` — use playersRef for name lookups to avoid
+  // tearing down and re-registering all handlers on every SessionUpdated.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connection, sessionCode]);
 
   const handleSubmitRanking = (ranked: string[]) => {
     connection.invoke('SubmitRanking', sessionCode, ranked).catch(console.error);

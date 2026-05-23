@@ -6,26 +6,40 @@ import { Session } from '../lib/types';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [invokeError, setInvokeError] = useState<string | null>(null);
   const { connection, isConnected, error } = useSignalR();
 
   useEffect(() => {
     if (!connection) return;
     connection.on('SessionUpdated', (s: Session) => {
+      setInvokeError(null); // clear any lobby-phase error once we're in a session
       setSession(s);
+    });
+    // Listen for server-sent Error events before a session is established
+    // (e.g. CreateSession / JoinSession failures).
+    connection.on('Error', (msg: string) => {
+      setInvokeError(msg);
     });
     return () => {
       connection.off('SessionUpdated');
+      connection.off('Error');
     };
   }, [connection]);
 
   const handleCreate = (name: string) => {
     if (!connection) return;
-    connection.invoke('CreateSession', name).catch(console.error);
+    setInvokeError(null);
+    connection.invoke('CreateSession', name).catch((err: Error) => {
+      setInvokeError(`Could not create session: ${err.message}`);
+    });
   };
 
   const handleJoin = (code: string, name: string) => {
     if (!connection) return;
-    connection.invoke('JoinSession', code, name).catch(console.error);
+    setInvokeError(null);
+    connection.invoke('JoinSession', code, name).catch((err: Error) => {
+      setInvokeError(`Could not join session: ${err.message}`);
+    });
   };
 
   return (
@@ -35,9 +49,10 @@ export default function App() {
       </h1>
       <p className="text-center text-zinc-400 mb-12">Cybersecurity Icebreaker • 2 Players</p>
 
-      {error && (
+      {/* Connection-level or pre-session invoke errors — shown in lobby only */}
+      {(error || (!session && invokeError)) && (
         <div className="bg-red-900 border border-red-500 rounded-xl px-6 py-4 text-red-200 mb-8 text-center">
-          {error}
+          {error || invokeError}
         </div>
       )}
 
