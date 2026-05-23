@@ -4,6 +4,7 @@ using Microsoft.Azure.Cosmos;
 using Microsoft.Azure.SignalR;
 using System.Threading.RateLimiting;
 using RankandFile.Core.Repositories;
+using RankandFile.Core.Serialization;
 using RankandFile.Core.Services;
 using RankandFile.GameHub;
 
@@ -68,16 +69,16 @@ var cosmosEndpoint = builder.Configuration["Cosmos:Endpoint"];
 if (string.IsNullOrWhiteSpace(cosmosEndpoint))
     throw new InvalidOperationException("Cosmos:Endpoint is not configured.");
 
-// CamelCase serialization maps C# 'Id' → JSON 'id', which Cosmos DB requires.
-// It also serializes all other properties (SessionCode → sessionCode) consistently
-// with the SQL queries in SessionRepository that reference camelCase field names.
+// CosmosCamelCaseSerializer uses System.Text.Json with PropertyNamingPolicy.CamelCase,
+// which maps C# 'Id' → JSON 'id' and 'SessionCode' → 'sessionCode' as required.
+// Crucially, STJ camelCase does NOT transform dictionary keys — preserving ConnectionIds
+// stored in Rankings, Pairings, and ScoresThisRound across Cosmos read/write round-trips.
+// (The built-in CosmosPropertyNamingPolicy.CamelCase uses Newtonsoft.Json which also
+// lowercases dict keys since Json.NET 9, breaking TryGetValue lookups on ConnectionIds.)
 var cosmosClient = new CosmosClient(cosmosEndpoint, new DefaultAzureCredential(),
     new CosmosClientOptions
     {
-        SerializerOptions = new CosmosSerializationOptions
-        {
-            PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
-        }
+        Serializer = new CosmosCamelCaseSerializer()
     });
 builder.Services.AddSingleton(cosmosClient);
 builder.Services.AddSingleton<SessionRepository>();
