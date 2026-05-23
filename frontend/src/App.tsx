@@ -47,7 +47,7 @@ export default function App() {
       <h1 className="text-6xl font-bold text-center mb-8 tracking-tighter">
         <span className="text-neon">RANK</span> &amp; <span className="text-cyber">FILE</span>
       </h1>
-      <p className="text-center text-zinc-400 mb-12">Cybersecurity Icebreaker • 2 Players</p>
+      <p className="text-center text-zinc-400 mb-12">Cybersecurity Icebreaker • 2+ Players</p>
 
       {/* Connection-level or pre-session invoke errors — shown in lobby only */}
       {(error || (!session && invokeError)) && (
