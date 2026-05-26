@@ -88,7 +88,32 @@ public class GameHub : Hub
         }
     }
 
-    public async Task StartNewRound(string sessionCode, int maxRounds = 2, string gameMode = "normal")
+    public async Task SetGameMode(string sessionCode, string gameMode)
+    {
+        try
+        {
+            var session = await _repo.GetSessionAsync(sessionCode);
+            if (session == null)
+            {
+                await Clients.Caller.SendAsync("Error", "Session not found.");
+                return;
+            }
+
+            // Only the host can change the game mode, and only before the game starts.
+            if (Context.ConnectionId != session.HostPlayerId || session.Status != "Lobby")
+                return;
+
+            session.GameMode = gameMode == "meme" ? "meme" : "normal";
+            await _repo.SaveSessionAsync(session);
+            await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("Error", $"Failed to set game mode: {ex.Message}");
+        }
+    }
+
+    public async Task StartNewRound(string sessionCode, int maxRounds = 2)
     {
         try
         {
@@ -109,9 +134,9 @@ public class GameHub : Hub
             if (session.CurrentRound == 0)
             {
                 session.MaxRounds = AllowedMaxRounds.Contains(maxRounds) ? maxRounds : 2;
-                session.GameMode = gameMode == "meme" ? "meme" : "normal";
+                // GameMode is set separately via SetGameMode before the round starts.
                 // Broadcast the updated session so every client immediately sees the
-                // correct MaxRounds and GameMode values before the first RoundStarted fires.
+                // correct MaxRounds value before the first RoundStarted fires.
                 await _repo.SaveSessionAsync(session);
                 await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
             }
