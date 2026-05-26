@@ -10,6 +10,8 @@ import MatchSplash from './MatchSplash';
 import Timer from './Timer';
 import { GuessResult, Player, Round, Session } from '../lib/types';
 
+type GameMode = 'normal' | 'meme';
+
 interface TargetInfo {
   targetId: string;
   targetName: string;
@@ -41,7 +43,6 @@ export default function GameScreen({
   const [maxRounds, setMaxRounds] = useState<number>(initialSession.maxRounds ?? 2);
 
   // Game mode — host selects before first round; locked in once game starts.
-  type GameMode = 'normal' | 'meme';
   const [selectedMode, setSelectedMode] = useState<GameMode>('normal');
   const [gameMode, setGameMode] = useState<GameMode>(
     (initialSession.gameMode as GameMode) ?? 'normal'
