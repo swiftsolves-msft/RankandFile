@@ -13,4 +13,5 @@ public class Session
     // Use a local HashSet when doing lookups in PairingService.
     public List<string> PreviousPairs { get; set; } = new(); // "minId-maxId"
     public int MaxRounds { get; set; } = 2;
+    public string GameMode { get; set; } = "normal"; // "normal" | "meme"
 }

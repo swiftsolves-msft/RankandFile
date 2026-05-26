@@ -88,7 +88,7 @@ public class GameHub : Hub
         }
     }
 
-    public async Task StartNewRound(string sessionCode, int maxRounds = 2)
+    public async Task StartNewRound(string sessionCode, int maxRounds = 2, string gameMode = "normal")
     {
         try
         {
@@ -109,8 +109,9 @@ public class GameHub : Hub
             if (session.CurrentRound == 0)
             {
                 session.MaxRounds = AllowedMaxRounds.Contains(maxRounds) ? maxRounds : 2;
+                session.GameMode = gameMode == "meme" ? "meme" : "normal";
                 // Broadcast the updated session so every client immediately sees the
-                // correct MaxRounds value before the first RoundStarted fires.
+                // correct MaxRounds and GameMode values before the first RoundStarted fires.
                 await _repo.SaveSessionAsync(session);
                 await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
             }

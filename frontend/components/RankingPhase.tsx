@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import Card from './Card';
 import { Card as CardType } from '../lib/types';
 
-function SortableCardItem({ card, index }: { card: CardType; index: number }) {
+function SortableCardItem({ card, index, isMeme }: { card: CardType; index: number; isMeme?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.noun });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -17,7 +17,7 @@ function SortableCardItem({ card, index }: { card: CardType; index: number }) {
   return (
     <div ref={setNodeRef} style={style} className="flex items-center gap-4 cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
       <div className="w-8 h-8 rounded-full bg-neon text-black flex items-center justify-center font-bold shrink-0">{index + 1}</div>
-      <Card card={card} isSpicy={card.isSpicy} />
+      <Card card={card} isSpicy={card.isSpicy} isMeme={isMeme} />
     </div>
   );
 }
@@ -27,11 +27,13 @@ export default function RankingPhase({
   onSubmit,
   onTimeUp,
   hasSubmitted = false,
+  isMeme = false,
 }: {
   cards: CardType[];
   onSubmit: (ranked: string[]) => void;
   onTimeUp?: (getRanked: () => string[]) => void;
   hasSubmitted?: boolean;
+  isMeme?: boolean;
 }) {
   const [rankedCards, setRankedCards] = useState(cards);
 
@@ -67,7 +69,7 @@ export default function RankingPhase({
           <SortableContext items={rankedCards.map(c => c.noun)} strategy={verticalListSortingStrategy}>
             <div className="space-y-4">
               {rankedCards.map((card, index) => (
-                <SortableCardItem key={card.noun} card={card} index={index} />
+                <SortableCardItem key={card.noun} card={card} index={index} isMeme={isMeme} />
               ))}
             </div>
           </SortableContext>
