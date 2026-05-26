@@ -6,6 +6,7 @@ import RankingPhase from './RankingPhase';
 import GuessingPhase from './GuessingPhase';
 import ResultsPhase from './ResultsPhase';
 import Leaderboard from './Leaderboard';
+import MatchSplash from './MatchSplash';
 import Timer from './Timer';
 import { GuessResult, Player, Round, Session } from '../lib/types';
 
@@ -24,7 +25,7 @@ export default function GameScreen({
   connection: HubConnection;
 }) {
   const sessionCode = initialSession.sessionCode;
-  const [phase, setPhase] = useState<'lobby' | 'ranking' | 'guessing' | 'results' | 'leaderboard' | 'gameover'>('lobby');
+  const [phase, setPhase] = useState<'lobby' | 'splash' | 'ranking' | 'guessing' | 'results' | 'leaderboard' | 'gameover'>('lobby');
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [targetInfo, setTargetInfo] = useState<TargetInfo | null>(null);
   const [lastResult, setLastResult] = useState<GuessResult | null>(null);
@@ -157,8 +158,7 @@ export default function GameScreen({
       setServerError(null); // clear any pre-game errors (e.g. "Need at least 2 players")
       setCurrentRound(round);
       setRoundNum(round.roundNum);
-      setPhase('ranking');
-      setTimer(60);
+      setPhase('splash'); // show match splash before ranking; timer starts after splash
       setHasSubmittedRanking(false);
       setHasSubmittedGuess(false);
       setTargetInfo(null); // reset so fallback effect can re-resolve for guessing phase
@@ -237,6 +237,12 @@ export default function GameScreen({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connection, sessionCode]);
 
+  // Called by MatchSplash when its 5-second animation completes.
+  const handleSplashDone = useCallback(() => {
+    setPhase('ranking');
+    setTimer(60);
+  }, []);
+
   const handleSubmitRanking = (ranked: string[]) => {
     connection.invoke('SubmitRanking', sessionCode, ranked).catch(console.error);
     setHasSubmittedRanking(true);
@@ -313,8 +319,13 @@ export default function GameScreen({
         </div>
       )}
 
-      {/* Round counter — shown during active gameplay and leaderboard */}
-      {roundNum > 0 && phase !== 'lobby' && phase !== 'gameover' && (
+      {/* Match splash — fixed overlay, shown at the start of every round */}
+      {phase === 'splash' && targetInfo && (
+        <MatchSplash targetName={targetInfo.targetName} onDone={handleSplashDone} />
+      )}
+
+      {/* Round counter — shown during active gameplay and leaderboard (not during splash) */}
+      {roundNum > 0 && phase !== 'lobby' && phase !== 'splash' && phase !== 'gameover' && (
         <div className="text-center">
           <span className="inline-block bg-zinc-800 border border-zinc-700 rounded-full px-4 py-1 text-sm text-zinc-400 font-mono">
             Round <span className="text-neon font-bold">{roundNum}</span> of <span className="text-cyber font-bold">{maxRounds}</span>
