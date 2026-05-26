@@ -69,8 +69,8 @@ export default function ResultsPhase({
       <div className="rounded-2xl border border-zinc-700 overflow-hidden">
         <div className="grid grid-cols-[2rem_1fr_1fr_auto] gap-x-4 px-4 py-2 bg-zinc-800 text-xs uppercase text-zinc-400 font-bold">
           <span>#</span>
-          <span>{result.targetName}&apos;s actual rank</span>
           <span>Your guess</span>
+          <span>{result.targetName}&apos;s actual rank</span>
           <span>Points</span>
         </div>
         {result.actual.map((noun, i) => {
@@ -80,12 +80,12 @@ export default function ResultsPhase({
           return (
             <div key={noun} className={`grid grid-cols-[2rem_1fr_1fr_auto] gap-x-4 px-4 py-3 border-t items-center ${rowBg(match)}`}>
               <span className="text-zinc-500 font-mono text-sm">{i + 1}</span>
+              <div className={`text-sm font-semibold ${guessedNoun === noun ? 'text-green-400' : 'text-zinc-300'}`}>
+                {guessedNoun}
+              </div>
               <div>
                 <div className="text-white font-semibold text-sm">{noun}</div>
                 {card && <div className="text-zinc-500 text-xs">{card.tooltip}</div>}
-              </div>
-              <div className={`text-sm font-semibold ${guessedNoun === noun ? 'text-green-400' : 'text-zinc-300'}`}>
-                {guessedNoun}
               </div>
               <MatchBadge match={match} />
             </div>
