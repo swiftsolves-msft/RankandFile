@@ -266,8 +266,14 @@ export default function GameScreen({
   };
 
   const handleStartRound = () => {
-    // Pass selectedRounds and selectedMode on every call — backend only applies them on round 1.
-    connection.invoke('StartNewRound', sessionCode, selectedRounds, selectedMode).catch(console.error);
+    // Pass selectedRounds on every call — backend only applies it on round 1.
+    connection.invoke('StartNewRound', sessionCode, selectedRounds).catch(console.error);
+  };
+
+  // Called whenever the host changes the mode toggle in the lobby.
+  const handleModeChange = (mode: GameMode) => {
+    setSelectedMode(mode);
+    connection.invoke('SetGameMode', sessionCode, mode).catch(console.error);
   };
 
   return (
@@ -312,7 +318,7 @@ export default function GameScreen({
                 <p className="text-zinc-300 text-sm font-semibold uppercase tracking-widest mb-4">Game Mode</p>
                 <div className="flex items-center gap-6 justify-center">
                   <button
-                    onClick={() => setSelectedMode('normal')}
+                    onClick={() => handleModeChange('normal')}
                     className={`px-6 py-3 rounded-xl font-bold transition border-2 ${
                       selectedMode === 'normal'
                         ? 'bg-neon text-black border-neon'
@@ -322,7 +328,7 @@ export default function GameScreen({
                     Normal
                   </button>
                   <button
-                    onClick={() => setSelectedMode('meme')}
+                    onClick={() => handleModeChange('meme')}
                     className={`px-6 py-3 rounded-xl font-bold transition border-2 ${
                       selectedMode === 'meme'
                         ? 'bg-red-500 text-black border-red-500'
