@@ -1,6 +1,7 @@
 export interface Card {
   noun: string;
   tooltip: string;
+  tooltipMeme: string;
   category: string;
   isSpicy: boolean;
 }
@@ -28,6 +29,7 @@ export interface Session {
   players: Player[];
   currentRound: number;
   maxRounds: number;
+  gameMode: string;
   rounds: Round[];
 }
 

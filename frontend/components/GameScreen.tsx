@@ -39,6 +39,13 @@ export default function GameScreen({
   const ROUND_OPTIONS = [1, 2, 3] as const;
   const [selectedRounds, setSelectedRounds] = useState<1 | 2 | 3>(2);
   const [maxRounds, setMaxRounds] = useState<number>(initialSession.maxRounds ?? 2);
+
+  // Game mode — host selects before first round; locked in once game starts.
+  type GameMode = 'normal' | 'meme';
+  const [selectedMode, setSelectedMode] = useState<GameMode>('normal');
+  const [gameMode, setGameMode] = useState<GameMode>(
+    (initialSession.gameMode as GameMode) ?? 'normal'
+  );
   const [roundNum, setRoundNum] = useState<number>(0);
 
   // Per-round submission tracking — used to show "waiting for partner" UI
@@ -152,6 +159,7 @@ export default function GameScreen({
       setPlayers(s.players);
       setHostPlayerId(s.hostPlayerId);
       if (s.maxRounds) setMaxRounds(s.maxRounds);
+      if (s.gameMode) setGameMode(s.gameMode as GameMode);
     });
 
     connection.on('RoundStarted', (round: Round) => {
@@ -257,8 +265,8 @@ export default function GameScreen({
   };
 
   const handleStartRound = () => {
-    // Pass selectedRounds on every call — backend only applies it on round 1.
-    connection.invoke('StartNewRound', sessionCode, selectedRounds).catch(console.error);
+    // Pass selectedRounds and selectedMode on every call — backend only applies them on round 1.
+    connection.invoke('StartNewRound', sessionCode, selectedRounds, selectedMode).catch(console.error);
   };
 
   return (
@@ -295,6 +303,38 @@ export default function GameScreen({
                 </div>
                 <p className="text-zinc-500 text-xs mt-3">
                   ~{selectedRounds * 4}–{selectedRounds * 6} minutes of play
+                </p>
+              </div>
+
+              {/* Game mode selector */}
+              <div className="bg-zinc-800 rounded-2xl px-8 py-5 inline-block">
+                <p className="text-zinc-300 text-sm font-semibold uppercase tracking-widest mb-4">Game Mode</p>
+                <div className="flex items-center gap-6 justify-center">
+                  <button
+                    onClick={() => setSelectedMode('normal')}
+                    className={`px-6 py-3 rounded-xl font-bold transition border-2 ${
+                      selectedMode === 'normal'
+                        ? 'bg-neon text-black border-neon'
+                        : 'bg-zinc-700 text-zinc-300 border-zinc-600 hover:border-neon hover:text-neon'
+                    }`}
+                  >
+                    Normal
+                  </button>
+                  <button
+                    onClick={() => setSelectedMode('meme')}
+                    className={`px-6 py-3 rounded-xl font-bold transition border-2 ${
+                      selectedMode === 'meme'
+                        ? 'bg-red-500 text-black border-red-500'
+                        : 'bg-zinc-700 text-zinc-300 border-zinc-600 hover:border-red-400 hover:text-red-400'
+                    }`}
+                  >
+                    🔥 Meme Mode
+                  </button>
+                </div>
+                <p className="text-zinc-500 text-xs mt-3">
+                  {selectedMode === 'meme'
+                    ? 'Chaotic descriptions — not for the faint of heart'
+                    : 'Professional tooltips — keeping it corporate'}
                 </p>
               </div>
 
@@ -339,6 +379,7 @@ export default function GameScreen({
           onSubmit={handleSubmitRanking}
           onTimeUp={handleTimeUp}
           hasSubmitted={hasSubmittedRanking}
+          isMeme={gameMode === 'meme'}
         />
       )}
 
@@ -351,6 +392,7 @@ export default function GameScreen({
           onSubmit={handleSubmitGuess}
           onTimeUp={handleTimeUp}
           hasSubmitted={hasSubmittedGuess}
+          isMeme={gameMode === 'meme'}
         />
       )}
 
