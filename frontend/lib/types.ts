@@ -1,6 +1,7 @@
 export interface Card {
   noun: string;
   tooltip: string;
+  category: string;
   isSpicy: boolean;
 }
 
