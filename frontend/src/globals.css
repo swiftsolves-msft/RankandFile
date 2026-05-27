@@ -7,5 +7,7 @@ body {
 }
 
 .card {
-  @apply bg-zinc-900 border border-neon rounded-xl p-6 shadow-lg hover:shadow-neon transition-all;
+  @apply bg-zinc-900 border border-neon rounded-xl p-6 shadow-lg hover:shadow-neon transition-all flex flex-col justify-between;
+  min-height: 170px;
+  flex: 1;
 }
