@@ -290,8 +290,9 @@ export default function GameScreen({
 
           {isHost ? (
             <div className="mt-6 space-y-6">
+              <div className="flex flex-wrap justify-center gap-6">
               {/* Round count selector */}
-              <div className="bg-zinc-800 rounded-2xl px-8 py-5 inline-block">
+              <div className="bg-zinc-800 rounded-2xl px-8 py-5">
                 <p className="text-zinc-300 text-sm font-semibold uppercase tracking-widest mb-4">Number of Rounds</p>
                 <div className="flex items-center gap-6 justify-center">
                   {ROUND_OPTIONS.map(n => (
@@ -314,7 +315,7 @@ export default function GameScreen({
               </div>
 
               {/* Game mode selector */}
-              <div className="bg-zinc-800 rounded-2xl px-8 py-5 inline-block">
+              <div className="bg-zinc-800 rounded-2xl px-8 py-5">
                 <p className="text-zinc-300 text-sm font-semibold uppercase tracking-widest mb-4">Game Mode</p>
                 <div className="flex items-center gap-6 justify-center">
                   <button
@@ -343,6 +344,7 @@ export default function GameScreen({
                     ? 'Chaotic descriptions — not for the faint of heart'
                     : 'Professional tooltips — keeping it corporate'}
                 </p>
+              </div>
               </div>
 
               <div>
