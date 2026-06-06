@@ -70,7 +70,7 @@ export default function GuessingPhase({
       <h2 className="text-cyber text-3xl mb-2">
         How did <span className="font-bold">{targetName}</span> rank them?
       </h2>
-      <p className="text-zinc-400 text-sm mb-4">Drag to order by what you think <strong>{targetName}</strong> values most</p>
+      <p className="text-zinc-400 text-sm mb-4">Rank by what you think <strong>{targetName}</strong>'s important priorities are</p>
       {isTriple && <p className="text-red-400 mb-4">{cycleInfo}</p>}
 
       <div className={hasSubmitted ? 'opacity-50 pointer-events-none' : ''}>
