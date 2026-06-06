@@ -62,7 +62,7 @@ export default function RankingPhase({
   return (
     <div>
       <h2 className="text-neon text-2xl mb-2">Rank the cards by importance</h2>
-      <p className="text-zinc-400 text-sm mb-6">Drag to reorder — #1 is most important to you</p>
+      <p className="text-zinc-400 text-sm mb-6">Rank by what your important priorities are — #1 matters most to you</p>
 
       <div className={hasSubmitted ? 'opacity-50 pointer-events-none' : ''}>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
