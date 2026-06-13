@@ -35,6 +35,12 @@ public class GameHub : Hub
     {
         try
         {
+            if (!NameValidator.IsClean(playerName))
+            {
+                await Clients.Caller.SendAsync("Error", NameValidator.RejectedMessage);
+                return;
+            }
+
             var session = await _repo.GetSessionAsync(sessionCode);
             if (session == null)
             {
@@ -61,6 +67,12 @@ public class GameHub : Hub
     {
         try
         {
+            if (!NameValidator.IsClean(playerName))
+            {
+                await Clients.Caller.SendAsync("Error", NameValidator.RejectedMessage);
+                return;
+            }
+
             // Retry until we get an unused code (collision protection)
             string sessionCode;
             do
