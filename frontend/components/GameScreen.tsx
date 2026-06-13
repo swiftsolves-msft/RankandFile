@@ -382,6 +382,11 @@ export default function GameScreen({
         </div>
       )}
 
+      {/* Countdown timer — top of ranking and guessing phases; ResultsPhase has its own internal timer */}
+      {timer > 0 && (phase === 'ranking' || phase === 'guessing') && (
+        <Timer seconds={timer} color={timer <= 10 ? 'red-400' : 'neon'} />
+      )}
+
       {phase === 'ranking' && currentRound && (
         <RankingPhase
           cards={currentRound.cards}
@@ -445,7 +450,6 @@ export default function GameScreen({
         </>
       )}
 
-      {timer > 0 && <Timer seconds={timer} color={timer <= 10 ? 'red-400' : 'neon'} />}
     </div>
   );
 }
