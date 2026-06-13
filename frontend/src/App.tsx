@@ -2,12 +2,20 @@ import { useEffect, useState } from 'react';
 import Lobby from '../components/Lobby';
 import GameScreen from '../components/GameScreen';
 import { useSignalR } from '../lib/signalr';
+import { setInSession } from '../lib/tabGuard';
 import { Session } from '../lib/types';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [invokeError, setInvokeError] = useState<string | null>(null);
   const { connection, isConnected, error } = useSignalR();
+
+  // Tell the cross-tab guard whether this tab currently occupies a session, so
+  // other tabs in the same browser are blocked from joining a second time.
+  useEffect(() => {
+    setInSession(session !== null);
+    return () => setInSession(false);
+  }, [session]);
 
   useEffect(() => {
     if (!connection) return;
