@@ -61,7 +61,7 @@ export default function RankingPhase({
 
   return (
     <div>
-      <h2 className="text-neon text-2xl mb-2">Rank the cards by importance</h2>
+      <h2 className="text-neon text-2xl mb-2">Rank the cards by what you think are important to Cybersecurity</h2>
       <p className="text-zinc-400 text-sm mb-6">Drag to reorder — #1 is most important to you</p>
 
       <div className={hasSubmitted ? 'opacity-50 pointer-events-none' : ''}>
