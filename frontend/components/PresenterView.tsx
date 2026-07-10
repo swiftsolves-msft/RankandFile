@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import InstructionsLoop from './InstructionsLoop';
+import JoinQR from './JoinQR';
 import { onPresenterGameStarted, getPresenterSessionCode } from '../lib/presenter';
 
 /**
@@ -31,7 +32,7 @@ export default function PresenterView() {
   return (
     <div className="fixed inset-0 flex flex-col bg-black">
       {sessionCode && (
-        <div className="shrink-0 text-center py-6 border-b border-zinc-800">
+        <div className="shrink-0 flex items-center justify-center gap-8 py-6 border-b border-zinc-800">
           <p className="text-4xl md:text-5xl font-bold text-zinc-100">
             Use Code{' '}
             <span className="text-neon font-mono drop-shadow-[0_0_16px_rgba(0,255,170,0.5)]">
@@ -39,6 +40,7 @@ export default function PresenterView() {
             </span>{' '}
             to Join Session
           </p>
+          <JoinQR sessionCode={sessionCode} size={128} />
         </div>
       )}
       <InstructionsLoop variant="presenter" />
