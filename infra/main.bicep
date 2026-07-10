@@ -9,7 +9,21 @@ param location string = resourceGroup().location
 @description('Azure SignalR SKU')
 param signalrSku string = 'Standard_S1'
 
+@description('Address space for the app VNet')
+param vnetAddressPrefix string = '10.20.0.0/16'
+
+@description('Subnet delegated to the App Service for regional VNet integration')
+param appSubnetPrefix string = '10.20.1.0/24'
+
+@description('Subnet that hosts the Cosmos DB private endpoint')
+param privateEndpointSubnetPrefix string = '10.20.2.0/24'
+
 var baseName = 'rankandfile-${environmentName}-${uniqueString(resourceGroup().id)}'
+
+// Fixed subnet names so we can reference them by resourceId without a race
+// against inline subnet declarations on the VNet.
+var appSubnetName = 'snet-appsvc'
+var privateEndpointSubnetName = 'snet-pe'
 
 // Built-in role definition IDs (no keys required — MSI only)
 // Cosmos DB Built-in Data Contributor (data-plane RBAC; not an ARM role)
@@ -39,6 +53,42 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
+// ============== VIRTUAL NETWORK ==============
+// One VNet with two subnets:
+//   snet-appsvc — delegated to the App Service for regional VNet integration
+//                 (all backend outbound traffic egresses through here)
+//   snet-pe     — holds the Cosmos DB private endpoint NIC
+resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
+  name: '${baseName}-vnet'
+  location: location
+  tags: { environment: environmentName }
+  properties: {
+    addressSpace: { addressPrefixes: [vnetAddressPrefix] }
+    subnets: [
+      {
+        name: appSubnetName
+        properties: {
+          addressPrefix: appSubnetPrefix
+          delegations: [
+            {
+              name: 'webapp-delegation'
+              properties: { serviceName: 'Microsoft.Web/serverFarms' }
+            }
+          ]
+        }
+      }
+      {
+        name: privateEndpointSubnetName
+        properties: {
+          addressPrefix: privateEndpointSubnetPrefix
+          // Required so the private endpoint NIC can be placed in this subnet.
+          privateEndpointNetworkPolicies: 'Disabled'
+        }
+      }
+    ]
+  }
+}
+
 // ============== COSMOS DB ==============
 resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-08-15' = {
   name: '${baseName}-cosmos'
@@ -51,6 +101,13 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-08-15' = {
     enableAutomaticIdempotency: true
     // Disable key-based auth at the Azure level — MSI only
     disableLocalAuth: true
+    // Block the public internet path entirely — the account is reachable ONLY
+    // through the private endpoint below. Satisfies the policy that forbids
+    // PaaS-to-Cosmos over public internet.
+    publicNetworkAccess: 'Disabled'
+    // Let trusted Azure control-plane services (portal, backup, RBAC) still reach
+    // the account for management even with public access disabled.
+    networkAclBypass: 'AzureServices'
   }
 }
 
@@ -71,6 +128,60 @@ resource sessionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/c
       partitionKey: { paths: ['/sessionCode'] }
       indexingPolicy: { indexingMode: 'consistent' }
     }
+  }
+}
+
+// ============== COSMOS DB PRIVATE ENDPOINT + PRIVATE DNS ==============
+// Private endpoint puts a NIC with a VNet-internal IP in snet-pe and wires it to
+// the Cosmos account (SQL / Core API = group 'Sql').
+resource cosmosPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = {
+  name: '${baseName}-cosmos-pe'
+  location: location
+  tags: { environment: environmentName }
+  properties: {
+    subnet: { id: '${vnet.id}/subnets/${privateEndpointSubnetName}' }
+    privateLinkServiceConnections: [
+      {
+        name: 'cosmos-plsc'
+        properties: {
+          privateLinkServiceId: cosmosAccount.id
+          groupIds: ['Sql']
+        }
+      }
+    ]
+  }
+}
+
+// Private DNS zone so the account's public hostname
+// (*-cosmos.documents.azure.com) resolves to the private endpoint IP from
+// inside the VNet.
+resource cosmosDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink.documents.azure.com'
+  location: 'global'
+  tags: { environment: environmentName }
+}
+
+resource cosmosDnsLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent: cosmosDnsZone
+  name: '${baseName}-cosmos-dnslink'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: { id: vnet.id }
+  }
+}
+
+// Binds the private endpoint's records into the private DNS zone automatically.
+resource cosmosPeDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = {
+  parent: cosmosPrivateEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'cosmos'
+        properties: { privateDnsZoneId: cosmosDnsZone.id }
+      }
+    ]
   }
 }
 
@@ -107,6 +218,11 @@ resource backendApp 'Microsoft.Web/sites@2024-04-01' = {
     siteConfig: {
       netFrameworkVersion: 'v8.0'
       alwaysOn: true
+      // Route ALL outbound traffic through the VNet integration below so (a) the
+      // linked private DNS zone resolves the Cosmos hostname to its private IP
+      // and (b) Cosmos traffic reaches the private endpoint. SignalR and App
+      // Insights still egress fine via the VNet's default internet route.
+      vnetRouteAllEnabled: true
       appSettings: [
         // Endpoint URLs only — no secrets, no keys
         { name: 'Cosmos__Endpoint', value: cosmosAccount.properties.documentEndpoint }
@@ -117,6 +233,19 @@ resource backendApp 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
       ]
     }
+  }
+}
+
+// ============== APP SERVICE → VNET INTEGRATION ==============
+// Regional (swift) VNet integration into the delegated app subnet. Supported on
+// Basic (B1) and higher. This is what gives the backend a route into the VNet
+// so it can reach the Cosmos private endpoint.
+resource backendVnetIntegration 'Microsoft.Web/sites/networkConfig@2024-04-01' = {
+  parent: backendApp
+  name: 'virtualNetwork'
+  properties: {
+    subnetResourceId: '${vnet.id}/subnets/${appSubnetName}'
+    swiftSupported: true
   }
 }
 
@@ -170,3 +299,5 @@ output cosmosEndpoint string = cosmosAccount.properties.documentEndpoint
 output signalRHostname string = signalR.properties.hostName
 output backendIdentityPrincipalId string = backendApp.identity.principalId
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
+output vnetName string = vnet.name
+output cosmosPrivateEndpointName string = cosmosPrivateEndpoint.name
