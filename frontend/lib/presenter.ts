@@ -14,9 +14,16 @@ export function isPresenterView(): boolean {
   return new URLSearchParams(window.location.search).has(PRESENT_QUERY);
 }
 
+/** Read the session code embedded in the presenter URL, if present. */
+export function getPresenterSessionCode(): string | null {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get('code');
+}
+
 /** Open the presenter instructions popup in a new window. */
-export function openPresenterWindow(): void {
-  const url = `${window.location.origin}${window.location.pathname}?${PRESENT_QUERY}=1`;
+export function openPresenterWindow(sessionCode?: string): void {
+  const code = sessionCode ? `&code=${encodeURIComponent(sessionCode)}` : '';
+  const url = `${window.location.origin}${window.location.pathname}?${PRESENT_QUERY}=1${code}`;
   window.open(url, 'rankfile-instructions', 'width=1280,height=800');
 }
 

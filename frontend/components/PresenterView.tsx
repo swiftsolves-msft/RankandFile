@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import InstructionsLoop from './InstructionsLoop';
-import { onPresenterGameStarted } from '../lib/presenter';
+import { onPresenterGameStarted, getPresenterSessionCode } from '../lib/presenter';
 
 /**
  * Full-screen instructions view opened by the host in a separate window for
@@ -12,6 +12,7 @@ import { onPresenterGameStarted } from '../lib/presenter';
  */
 export default function PresenterView() {
   const [started, setStarted] = useState(false);
+  const sessionCode = getPresenterSessionCode();
 
   useEffect(() => onPresenterGameStarted(() => setStarted(true)), []);
 
@@ -27,5 +28,20 @@ export default function PresenterView() {
     );
   }
 
-  return <InstructionsLoop variant="presenter" />;
+  return (
+    <div className="fixed inset-0 flex flex-col bg-black">
+      {sessionCode && (
+        <div className="shrink-0 text-center py-6 border-b border-zinc-800">
+          <p className="text-4xl md:text-5xl font-bold text-zinc-100">
+            Use Code{' '}
+            <span className="text-neon font-mono drop-shadow-[0_0_16px_rgba(0,255,170,0.5)]">
+              {sessionCode}
+            </span>{' '}
+            to Join Session
+          </p>
+        </div>
+      )}
+      <InstructionsLoop variant="presenter" />
+    </div>
+  );
 }

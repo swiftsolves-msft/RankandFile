@@ -45,7 +45,7 @@ export default function InstructionsLoop({
     <div
       className={
         presenter
-          ? 'fixed inset-0 flex flex-col items-center justify-center bg-black px-10 text-center'
+          ? 'flex-1 flex flex-col items-center justify-center px-10 text-center'
           : 'flex flex-col items-center justify-center text-center py-4'
       }
     >
