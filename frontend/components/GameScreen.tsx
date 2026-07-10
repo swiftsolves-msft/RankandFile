@@ -8,6 +8,8 @@ import ResultsPhase from './ResultsPhase';
 import Leaderboard from './Leaderboard';
 import MatchSplash from './MatchSplash';
 import Timer from './Timer';
+import InstructionsLoop from './InstructionsLoop';
+import { openPresenterWindow, notifyPresenterGameStarted } from '../lib/presenter';
 import { GuessResult, Player, Round, Session } from '../lib/types';
 
 type GameMode = 'normal' | 'meme';
@@ -165,6 +167,9 @@ export default function GameScreen({
 
     connection.on('RoundStarted', (round: Round) => {
       setServerError(null); // clear any pre-game errors (e.g. "Need at least 2 players")
+      // Stop the host's screen-share instructions popup (same browser) now that
+      // the game is actually starting.
+      notifyPresenterGameStarted();
       setCurrentRound(round);
       setRoundNum(round.roundNum);
       setPhase('splash'); // show match splash before ranking; timer starts after splash
@@ -347,17 +352,29 @@ export default function GameScreen({
               </div>
               </div>
 
-              <div>
+              <div className="flex flex-wrap items-center justify-center gap-4">
                 <button
                   onClick={handleStartRound}
                   className="px-8 py-3 bg-neon text-black font-bold text-lg rounded-xl hover:opacity-90 transition"
                 >
                   START ROUND
                 </button>
+                <button
+                  onClick={openPresenterWindow}
+                  className="px-6 py-3 bg-zinc-800 text-zinc-200 font-semibold text-base rounded-xl border border-zinc-600 hover:border-cyber hover:text-cyber transition"
+                  title="Opens a large-format instructions window you can share on Teams/Webex or a projector. It loops until you start the round."
+                >
+                  📺 Share Instructions on Screen
+                </button>
               </div>
             </div>
           ) : (
-            <p className="mt-4">Waiting for host to start the round…</p>
+            <div className="mt-6">
+              <p className="text-zinc-500 text-sm uppercase tracking-widest mb-2">
+                Waiting for the host to start…
+              </p>
+              <InstructionsLoop variant="inline" />
+            </div>
           )}
 
           <div className="mt-6 space-y-2">
