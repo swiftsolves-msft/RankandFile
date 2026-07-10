@@ -5,6 +5,7 @@ import PresenterView from '../components/PresenterView';
 import { useSignalR } from '../lib/signalr';
 import { setInSession } from '../lib/tabGuard';
 import { isPresenterView } from '../lib/presenter';
+import { getPrefilledJoinCode } from '../lib/joinLink';
 import { Session } from '../lib/types';
 
 export default function App() {
@@ -79,6 +80,7 @@ function GameApp() {
           onCreate={handleCreate}
           onJoin={handleJoin}
           isConnected={isConnected}
+          initialCode={getPrefilledJoinCode() ?? ''}
         />
       ) : (
         connection && (

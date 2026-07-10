@@ -8,13 +8,15 @@ export default function Lobby({
   onCreate,
   onJoin,
   isConnected,
+  initialCode = '',
 }: {
   onCreate: (name: string) => void;
   onJoin: (code: string, name: string) => void;
   isConnected: boolean;
+  initialCode?: string;
 }) {
   const [playerName, setPlayerName] = useState('');
-  const [sessionCode, setSessionCode] = useState('');
+  const [sessionCode, setSessionCode] = useState(initialCode);
   const [error, setError] = useState<string | null>(null);
 
   const canAct = isConnected && playerName.trim().length > 0;
@@ -57,9 +59,20 @@ export default function Lobby({
         <p className="text-zinc-400 text-center mb-4 text-sm">Connecting to server…</p>
       )}
 
+      {initialCode && (
+        <div className="bg-cyber/10 border border-cyber/40 rounded-xl px-4 py-3 mb-4 text-center">
+          <p className="text-cyber font-semibold">
+            You&rsquo;re joining game{' '}
+            <span className="font-mono font-bold tracking-widest">{initialCode}</span>
+          </p>
+          <p className="text-zinc-400 text-sm mt-1">Enter your name, then tap JOIN.</p>
+        </div>
+      )}
+
       <input
         type="text"
         placeholder="Your name (e.g. Nathan)"
+        autoFocus={!!initialCode}
         value={playerName}
         onChange={(e) => { setPlayerName(e.target.value); if (error) setError(null); }}
         className={`w-full bg-black border rounded-xl px-4 py-4 mb-2 text-lg outline-none ${
