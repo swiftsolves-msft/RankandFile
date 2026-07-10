@@ -1,11 +1,21 @@
 import { useEffect, useState } from 'react';
 import Lobby from '../components/Lobby';
 import GameScreen from '../components/GameScreen';
+import PresenterView from '../components/PresenterView';
 import { useSignalR } from '../lib/signalr';
 import { setInSession } from '../lib/tabGuard';
+import { isPresenterView } from '../lib/presenter';
 import { Session } from '../lib/types';
 
 export default function App() {
+  // Presenter (screen-share) popup: render the looping instructions only — no
+  // game connection. Kept in a separate component so the game hooks in GameApp
+  // never mount in the popup window.
+  if (isPresenterView()) return <PresenterView />;
+  return <GameApp />;
+}
+
+function GameApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [invokeError, setInvokeError] = useState<string | null>(null);
   const { connection, isConnected, error } = useSignalR();
