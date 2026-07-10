@@ -291,7 +291,7 @@ export default function GameScreen({
 
       {phase === 'lobby' && (
         <div className="text-center text-zinc-400">
-          <p className="text-2xl mb-2">Session: <span className="text-neon font-mono font-bold">{sessionCode}</span></p>
+          <p className="text-4xl mb-2">Use Code <span className="text-neon font-mono font-bold">{sessionCode}</span> to Join Session</p>
 
           {isHost ? (
             <div className="mt-6 space-y-6">
@@ -360,7 +360,7 @@ export default function GameScreen({
                   START ROUND
                 </button>
                 <button
-                  onClick={openPresenterWindow}
+                  onClick={() => openPresenterWindow(sessionCode)}
                   className="px-6 py-3 bg-zinc-800 text-zinc-200 font-semibold text-base rounded-xl border border-zinc-600 hover:border-cyber hover:text-cyber transition"
                   title="Opens a large-format instructions window you can share on Teams/Webex or a projector. It loops until you start the round."
                 >
