@@ -9,7 +9,7 @@ export default function Card({ card, isSpicy, isMeme }: { card: CardType; isSpic
       <div className="text-3xl font-bold text-center mb-6 text-white">
         {card.noun}
       </div>
-      <div className="text-xs italic text-zinc-400 text-center border-t border-zinc-700 pt-3">
+      <div className="text-xl italic text-zinc-400 text-center border-t border-zinc-700 pt-3">
         &ldquo;{displayTooltip}&rdquo;
       </div>
     </div>
