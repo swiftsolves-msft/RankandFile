@@ -292,10 +292,12 @@ export default function GameScreen({
 
       {phase === 'lobby' && (
         <div className="text-center text-zinc-400">
-          <div className="flex flex-col items-center gap-4">
-            <p className="text-4xl">Use Code <span className="text-neon font-mono font-bold">{sessionCode}</span> to Join Session</p>
-            <JoinQR sessionCode={sessionCode} size={144} />
-          </div>
+          {isHost && (
+            <div className="flex flex-col items-center gap-4">
+              <p className="text-4xl">Use Code <span className="text-neon font-mono font-bold">{sessionCode}</span> to Join Session</p>
+              <JoinQR sessionCode={sessionCode} size={144} />
+            </div>
+          )}
 
           {isHost ? (
             <div className="mt-6 space-y-6">
