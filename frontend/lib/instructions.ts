@@ -14,7 +14,7 @@ export interface InstructionSlide {
 export const ICEBREAKER_SLIDES: InstructionSlide[] = [
   {
     emoji: '🎯',
-    title: 'Welcome to Rank & File',
+    title: 'Welcome to ZeroRank',
     body: 'A quick cybersecurity icebreaker. Discover what your teammates value most — and how well you really know each other.',
   },
   {
@@ -42,7 +42,7 @@ export const ICEBREAKER_SLIDES: InstructionSlide[] = [
 export const CONFERENCE_SLIDES: InstructionSlide[] = [
   {
     emoji: '🎤',
-    title: 'Rank & File — Conference Mode',
+    title: 'ZeroRank — Conference Mode',
     body: 'No partners and no guessing. Everyone in the room ranks the same cards, and we find out what this room actually believes.',
   },
   {

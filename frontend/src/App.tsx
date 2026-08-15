@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import Lobby from '../components/Lobby';
 import GameScreen from '../components/GameScreen';
 import PresenterView from '../components/PresenterView';
+import QuoteRotator from '../components/QuoteRotator';
+import ZeroRankTitle from '../components/ZeroRankTitle';
 import { useSignalR } from '../lib/signalr';
 import { setInSession } from '../lib/tabGuard';
 import { isPresenterView } from '../lib/presenter';
@@ -86,10 +88,17 @@ function GameApp() {
 
   return (
     <div className="max-w-4xl mx-auto p-8">
-      <h1 className="text-6xl font-bold text-center mb-8 tracking-tighter">
-        <span className="text-neon">RANK</span> &amp; <span className="text-cyber">FILE</span>
-      </h1>
-      <p className="text-center text-zinc-400 mb-12">Cybersecurity Icebreaker • 2+ Players</p>
+      <ZeroRankTitle />
+
+      {/* Rotating quotes are for the landing page only — during a round the
+          screen belongs to the game. */}
+      {!session ? (
+        <div className="mt-6 mb-10">
+          <QuoteRotator />
+        </div>
+      ) : (
+        <div className="mb-10" />
+      )}
 
       {/* Connection-level or pre-session invoke errors — shown in lobby only */}
       {(error || (!session && invokeError)) && (

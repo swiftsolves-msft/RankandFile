@@ -16,14 +16,23 @@ builder.Services.AddApplicationInsightsTelemetry();
 // Health checks — used by App Service and load balancer probes
 builder.Services.AddHealthChecks();
 
-// CORS: only allow the configured frontend origin.
+// CORS: only allow the configured frontend origins.
 // AllowCredentials() is required by SignalR negotiate (credentials mode 'include').
 // AllowAnyHeader() is required so the SignalR negotiate preflight passes.
 // App Service env var Frontend__BaseUrl is translated to Frontend:BaseUrl by the env vars provider.
-var allowedOrigin = builder.Configuration["Frontend:BaseUrl"] ?? "http://localhost:3000";
+//
+// Comma-separated, because the app is reachable on more than one origin: the
+// Static Web App's own *.azurestaticapps.net hostname plus each custom domain.
+// A single origin here silently breaks the SignalR negotiate preflight for every
+// visitor arriving on any other name.
+var allowedOrigins = (builder.Configuration["Frontend:BaseUrl"] ?? "http://localhost:3000")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Select(o => o.TrimEnd('/'))
+    .ToArray();
+
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(p =>
-        p.WithOrigins(allowedOrigin)
+        p.WithOrigins(allowedOrigins)
          .AllowAnyMethod()
          .AllowAnyHeader()
          .AllowCredentials()));

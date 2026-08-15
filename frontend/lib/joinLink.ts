@@ -7,7 +7,10 @@
 // Public URL of the deployed app. QR codes are scanned on phones/tablets that
 // are NOT on the dev machine, so this must be the real production origin — not
 // window.location.origin (which would be localhost during development).
-export const PUBLIC_APP_URL = 'https://red-bush-0db18090f.7.azurestaticapps.net/';
+//
+// The short custom domain also keeps the encoded URL small, which means a
+// lower-density QR code that scans faster from the back of a room.
+export const PUBLIC_APP_URL = 'https://zerorank.net/';
 
 const JOIN_QUERY = 'join';
 

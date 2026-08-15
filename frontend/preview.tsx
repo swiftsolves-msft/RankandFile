@@ -11,6 +11,8 @@ import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import ConferenceResults from './components/conference/ConferenceResults';
 import PresenterView from './components/PresenterView';
+import QuoteRotator from './components/QuoteRotator';
+import ZeroRankTitle from './components/ZeroRankTitle';
 import { publishPresenterResults, subscribePresenter } from './lib/presenter';
 import { RoundAggregate } from './lib/types';
 import './src/globals.css';
@@ -92,7 +94,17 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 const view = new URLSearchParams(window.location.search).get('view');
 
 createRoot(document.getElementById('root')!).render(
-  view === 'instructions' ? (
+  view === 'landing' ? (
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: 48 }}>
+      <ZeroRankTitle />
+      <div style={{ marginTop: 24 }}>
+        <QuoteRotator />
+      </div>
+      <div style={{ marginTop: 64 }}>
+        <ZeroRankTitle size="large" />
+      </div>
+    </div>
+  ) : view === 'instructions' ? (
     // No stub host, so nothing answers presenter-ready and the view stays on the
     // lobby instruction loop — the deck comes from the ?mode= param.
     <PresenterView />

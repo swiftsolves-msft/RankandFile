@@ -18,6 +18,12 @@ param appSubnetPrefix string = '10.20.1.0/24'
 @description('Subnet that hosts the Cosmos DB private endpoint')
 param privateEndpointSubnetPrefix string = '10.20.2.0/24'
 
+@description('''Extra browser origins allowed to call the API, comma separated.
+The Static Web App default hostname is always included. Custom domains must be
+listed here or the SignalR negotiate preflight fails for anyone arriving on
+them.''')
+param additionalAllowedOrigins string = 'https://zerorank.net,https://www.zerorank.net'
+
 var baseName = 'rankandfile-${environmentName}-${uniqueString(resourceGroup().id)}'
 
 // Fixed subnet names so we can reference them by resourceId without a race
@@ -227,7 +233,7 @@ resource backendApp 'Microsoft.Web/sites@2024-04-01' = {
         // Endpoint URLs only — no secrets, no keys
         { name: 'Cosmos__Endpoint', value: cosmosAccount.properties.documentEndpoint }
         { name: 'AzureSignalR__Endpoint', value: 'https://${signalR.properties.hostName}' }
-        { name: 'Frontend__BaseUrl', value: 'https://${staticWebApp.properties.defaultHostname}' }
+        { name: 'Frontend__BaseUrl', value: empty(additionalAllowedOrigins) ? 'https://${staticWebApp.properties.defaultHostname}' : 'https://${staticWebApp.properties.defaultHostname},${additionalAllowedOrigins}' }
         { name: 'ASPNETCORE_ENVIRONMENT', value: environmentName }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
         { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
