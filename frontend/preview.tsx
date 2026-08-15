@@ -2,8 +2,11 @@
 // session (Cosmos is private-endpoint-only, so the backend cannot run locally).
 // Not part of the production build — vite only bundles index.html.
 //
-//   /preview.html                 the host board + a player's personal report
-//   /preview.html?view=presenter  the pop-out, driven by a stubbed host
+//   /preview.html                        host board + a player's personal report
+//   /preview.html?view=presenter         the pop-out, driven by a stubbed host
+//   /preview.html?view=instructions&mode=conference
+//                                        the pop-out's lobby deck (no stub host,
+//                                        so it stays on the instructions loop)
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import ConferenceResults from './components/conference/ConferenceResults';
@@ -86,10 +89,14 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-const isPresenter = new URLSearchParams(window.location.search).get('view') === 'presenter';
+const view = new URLSearchParams(window.location.search).get('view');
 
 createRoot(document.getElementById('root')!).render(
-  isPresenter ? (
+  view === 'instructions' ? (
+    // No stub host, so nothing answers presenter-ready and the view stays on the
+    // lobby instruction loop — the deck comes from the ?mode= param.
+    <PresenterView />
+  ) : view === 'presenter' ? (
     <>
       {/* Mounted first so its subscription is live before PresenterView asks. */}
       <StubHost />

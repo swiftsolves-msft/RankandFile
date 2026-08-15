@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { INSTRUCTION_SLIDES, SLIDE_DURATION_MS } from '../lib/instructions';
+import { SLIDE_DURATION_MS, slidesFor } from '../lib/instructions';
 
 // Cross-fade duration at the start/end of each slide.
 const FADE_MS = 700;
@@ -12,14 +12,28 @@ const FADE_MS = 700;
  *
  * - `inline`    — embedded in the waiting lobby for a joining player.
  * - `presenter` — full-screen, oversized font for the host's screen-share popup.
+ *
+ * `gameMode` picks the slide set, since Ice Breaker and Conference play
+ * differently enough that the wrong deck would mislead the room.
  */
 export default function InstructionsLoop({
   variant = 'inline',
+  gameMode,
 }: {
   variant?: 'inline' | 'presenter';
+  gameMode?: string;
 }) {
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(false);
+
+  // Stable module-level constants, so this is a safe effect dependency.
+  const slides = slidesFor(gameMode);
+
+  // Restart the deck when the host switches mode mid-loop, so nobody joins
+  // halfway through a set they have not seen the beginning of.
+  useEffect(() => {
+    setIndex(0);
+  }, [slides]);
 
   useEffect(() => {
     // Fade the new slide in on the next frame.
@@ -28,7 +42,7 @@ export default function InstructionsLoop({
     const fadeOut = setTimeout(() => setVisible(false), SLIDE_DURATION_MS - FADE_MS);
     // Advance to the next slide (wrapping around).
     const advance = setTimeout(
-      () => setIndex((i) => (i + 1) % INSTRUCTION_SLIDES.length),
+      () => setIndex((i) => (i + 1) % slides.length),
       SLIDE_DURATION_MS
     );
     return () => {
@@ -36,9 +50,10 @@ export default function InstructionsLoop({
       clearTimeout(fadeOut);
       clearTimeout(advance);
     };
-  }, [index]);
+  }, [index, slides]);
 
-  const slide = INSTRUCTION_SLIDES[index];
+  // Guard the render between a mode switch and the reset effect landing.
+  const slide = slides[index] ?? slides[0];
   const presenter = variant === 'presenter';
 
   return (
@@ -76,7 +91,7 @@ export default function InstructionsLoop({
 
       {/* Progress dots — highlight the current slide */}
       <div className={`flex items-center ${presenter ? 'gap-3 mt-16' : 'gap-2 mt-6'}`}>
-        {INSTRUCTION_SLIDES.map((_, i) => (
+        {slides.map((_, i) => (
           <span
             key={i}
             className={`rounded-full transition-all duration-500 ${

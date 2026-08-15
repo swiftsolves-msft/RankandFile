@@ -27,7 +27,9 @@ export type PresenterMessage =
   /** Popup -> host: "I just opened, send me current state." */
   | { type: 'presenter-ready' }
   | { type: 'round-aggregate'; payload: PresenterResults }
-  | { type: 'round-reset'; roundNum: number; maxRounds: number };
+  | { type: 'round-reset'; roundNum: number; maxRounds: number }
+  /** Host -> popup: which instruction deck to loop while in the lobby. */
+  | { type: 'lobby-state'; gameMode: string };
 
 /** True when this window/tab was opened as the presenter (screen-share) view. */
 export function isPresenterView(): boolean {
@@ -41,10 +43,21 @@ export function getPresenterSessionCode(): string | null {
   return new URLSearchParams(window.location.search).get('code');
 }
 
+/**
+ * Game mode carried in the presenter URL. Seeded at open time so the popup shows
+ * the right instruction deck on its very first frame; `lobby-state` messages
+ * keep it current if the host switches mode afterwards.
+ */
+export function getPresenterGameMode(): string | null {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get('mode');
+}
+
 /** Open the presenter popup in a new window (reused across calls by name). */
-export function openPresenterWindow(sessionCode?: string): void {
+export function openPresenterWindow(sessionCode?: string, gameMode?: string): void {
   const code = sessionCode ? `&code=${encodeURIComponent(sessionCode)}` : '';
-  const url = `${window.location.origin}${window.location.pathname}?${PRESENT_QUERY}=1${code}`;
+  const mode = gameMode ? `&mode=${encodeURIComponent(gameMode)}` : '';
+  const url = `${window.location.origin}${window.location.pathname}?${PRESENT_QUERY}=1${code}${mode}`;
   window.open(url, 'rankfile-instructions', 'width=1280,height=800');
 }
 
@@ -88,6 +101,11 @@ export function onPresenterGameStarted(cb: () => void): () => void {
 /** Host -> popup: render this round's Conference dashboards. */
 export function publishPresenterResults(payload: PresenterResults): void {
   post({ type: 'round-aggregate', payload });
+}
+
+/** Host -> popup: which instruction deck to loop while waiting in the lobby. */
+export function publishPresenterLobbyState(gameMode: string): void {
+  post({ type: 'lobby-state', gameMode });
 }
 
 /** Host -> popup: a new round is underway, clear the last results. */

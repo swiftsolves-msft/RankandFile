@@ -6,6 +6,7 @@ import JoinQR from './JoinQR';
 import ConferenceResults, { PANEL_TABS, PanelFocus } from './conference/ConferenceResults';
 import {
   PresenterResults,
+  getPresenterGameMode,
   getPresenterSessionCode,
   requestPresenterState,
   subscribePresenter,
@@ -29,6 +30,9 @@ export default function PresenterView() {
   const [roundLabel, setRoundLabel] = useState<string | null>(null);
   const [focus, setFocus] = useState<PanelFocus>('all');
   const sessionCode = getPresenterSessionCode();
+  // Seeded from the URL so the correct deck shows on the first frame, then kept
+  // current by `lobby-state` if the host switches mode while this window is open.
+  const [gameMode, setGameMode] = useState<string>(() => getPresenterGameMode() ?? 'icebreaker');
 
   useEffect(() => {
     const unsubscribe = subscribePresenter(m => {
@@ -42,6 +46,8 @@ export default function PresenterView() {
         setResults(null);
         setStarted(true);
         setRoundLabel(`Round ${m.roundNum} of ${m.maxRounds}`);
+      } else if (m.type === 'lobby-state') {
+        setGameMode(m.gameMode);
       }
     });
 
@@ -141,7 +147,7 @@ export default function PresenterView() {
           <JoinQR sessionCode={sessionCode} size={128} />
         </div>
       )}
-      <InstructionsLoop variant="presenter" />
+      <InstructionsLoop variant="presenter" gameMode={gameMode} />
     </div>
   );
 }

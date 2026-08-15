@@ -16,6 +16,7 @@ import {
   notifyPresenterGameStarted,
   notifyPresenterRoundReset,
   openPresenterWindow,
+  publishPresenterLobbyState,
   publishPresenterResults,
   subscribePresenter,
 } from '../lib/presenter';
@@ -209,11 +210,19 @@ export default function GameScreen({
     notifyPresenterRoundReset(roundNum, maxRounds);
   }, [isHost, isConference, phase, roundNum, maxRounds]);
 
-  // Replay current results to a popup that just opened.
+  // Keep the popup's instruction deck in step with the mode toggle.
+  useEffect(() => {
+    if (!isHost) return;
+    publishPresenterLobbyState(gameMode);
+  }, [isHost, gameMode]);
+
+  // Replay current state to a popup that just opened. Reads the mode from a ref
+  // because this subscription is registered once.
   useEffect(() => {
     if (!isHost) return;
     return subscribePresenter(m => {
       if (m.type !== 'presenter-ready') return;
+      publishPresenterLobbyState(gameModeRef.current);
       const current = presenterStateRef.current;
       if (current) publishPresenterResults(current);
     });
@@ -524,7 +533,7 @@ export default function GameScreen({
                   START ROUND
                 </button>
                 <button
-                  onClick={() => openPresenterWindow(sessionCode)}
+                  onClick={() => openPresenterWindow(sessionCode, gameMode)}
                   className="px-6 py-3 bg-zinc-800 text-zinc-200 font-semibold text-base rounded-xl border border-zinc-600 hover:border-cyber hover:text-cyber transition"
                   title="Opens a large-format instructions window you can share on Teams/Webex or a projector. It loops until you start the round."
                 >
@@ -537,7 +546,7 @@ export default function GameScreen({
               <p className="text-zinc-500 text-sm uppercase tracking-widest mb-2">
                 Waiting for the host to start…
               </p>
-              <InstructionsLoop variant="inline" />
+              <InstructionsLoop variant="inline" gameMode={gameMode} />
             </div>
           )}
 
@@ -642,7 +651,7 @@ export default function GameScreen({
           <div className="flex flex-wrap items-center justify-center gap-4">
             {isHost && (
               <button
-                onClick={() => openPresenterWindow(sessionCode)}
+                onClick={() => openPresenterWindow(sessionCode, gameMode)}
                 className="px-6 py-3 bg-zinc-800 text-zinc-200 font-semibold text-base rounded-xl border border-zinc-600 hover:border-cyber hover:text-cyber transition"
                 title="Opens a large-format results window you can share on Teams/Webex or a projector. Cycle the panels with the arrow keys."
               >
