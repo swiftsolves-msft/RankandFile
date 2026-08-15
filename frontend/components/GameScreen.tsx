@@ -11,7 +11,14 @@ import Timer from './Timer';
 import InstructionsLoop from './InstructionsLoop';
 import JoinQR from './JoinQR';
 import ConferenceResults from './conference/ConferenceResults';
-import { openPresenterWindow, notifyPresenterGameStarted } from '../lib/presenter';
+import {
+  PresenterResults,
+  notifyPresenterGameStarted,
+  notifyPresenterRoundReset,
+  openPresenterWindow,
+  publishPresenterResults,
+  subscribePresenter,
+} from '../lib/presenter';
 import {
   GuessResult, Player, RankingProgress, Round, RoundAggregate, Session,
 } from '../lib/types';
@@ -98,6 +105,10 @@ export default function GameScreen({
 
   const isHost = connection.connectionId === hostPlayerId;
 
+  // Last payload sent to the presenter popup, so it can be replayed when a
+  // popup opens after results were already published.
+  const presenterStateRef = useRef<PresenterResults | null>(null);
+
   // Transition to leaderboard/gameover once:
   // 1) all guesses submitted (pendingLeaderboard populated)
   // 2) discussion timer expired (discussionDone flagged by ResultsPhase)
@@ -179,6 +190,34 @@ export default function GameScreen({
       return () => clearTimeout(id);
     }
   }, [timer, isHost, connection, sessionCode]);
+
+  // ---- Presenter popup (host's browser only) ----
+  // Driven from effects rather than inside the hub handlers so the payload
+  // always reads current state instead of a value captured at registration.
+
+  useEffect(() => {
+    if (!isHost || !aggregate) return;
+    const payload: PresenterResults = { aggregate, hostPlayerId, maxRounds };
+    presenterStateRef.current = payload;
+    publishPresenterResults(payload);
+  }, [isHost, aggregate, hostPlayerId, maxRounds]);
+
+  // A new round is underway — clear last round's board off the shared screen.
+  useEffect(() => {
+    if (!isHost || !isConference || phase !== 'ranking') return;
+    presenterStateRef.current = null;
+    notifyPresenterRoundReset(roundNum, maxRounds);
+  }, [isHost, isConference, phase, roundNum, maxRounds]);
+
+  // Replay current results to a popup that just opened.
+  useEffect(() => {
+    if (!isHost) return;
+    return subscribePresenter(m => {
+      if (m.type !== 'presenter-ready') return;
+      const current = presenterStateRef.current;
+      if (current) publishPresenterResults(current);
+    });
+  }, [isHost]);
 
   // Callback registered by RankingPhase/GuessingPhase so we can auto-submit on timeout.
   // Reads phase/targetInfo from refs (always current) — no stale-closure risk.
@@ -601,6 +640,16 @@ export default function GameScreen({
           />
 
           <div className="flex flex-wrap items-center justify-center gap-4">
+            {isHost && (
+              <button
+                onClick={() => openPresenterWindow(sessionCode)}
+                className="px-6 py-3 bg-zinc-800 text-zinc-200 font-semibold text-base rounded-xl border border-zinc-600 hover:border-cyber hover:text-cyber transition"
+                title="Opens a large-format results window you can share on Teams/Webex or a projector. Cycle the panels with the arrow keys."
+              >
+                📺 Share Results on Screen
+              </button>
+            )}
+
             {aggregate.isFinalRound ? (
               <button
                 onClick={() => { window.location.href = window.location.origin; }}

@@ -1,8 +1,14 @@
 // Local-only harness for eyeballing the Conference dashboards without a live
 // session (Cosmos is private-endpoint-only, so the backend cannot run locally).
 // Not part of the production build — vite only bundles index.html.
+//
+//   /preview.html                 the host board + a player's personal report
+//   /preview.html?view=presenter  the pop-out, driven by a stubbed host
+import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import ConferenceResults from './components/conference/ConferenceResults';
+import PresenterView from './components/PresenterView';
+import { publishPresenterResults, subscribePresenter } from './lib/presenter';
 import { RoundAggregate } from './lib/types';
 import './src/globals.css';
 
@@ -17,6 +23,7 @@ const scores = [
 ];
 
 const HOST_ID = 'p5'; // Nate, mid-pack on purpose
+const MAX_ROUNDS = 3;
 
 const aggregate: RoundAggregate = {
   roundNum: 2,
@@ -50,6 +57,24 @@ const aggregate: RoundAggregate = {
 
 const myRanking = ['Ransomware', 'Firewall', 'Zero Trust', 'Mass Surveillance', 'Government Backdoor'];
 
+/**
+ * Stands in for the host's window. Only answers `presenter-ready`, which is the
+ * path that matters: it proves a popup opened *after* results were published
+ * still gets them replayed.
+ */
+function StubHost() {
+  useEffect(
+    () =>
+      subscribePresenter(m => {
+        if (m.type === 'presenter-ready') {
+          publishPresenterResults({ aggregate, hostPlayerId: HOST_ID, maxRounds: MAX_ROUNDS });
+        }
+      }),
+    []
+  );
+  return null;
+}
+
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 48 }}>
@@ -61,38 +86,36 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
+const isPresenter = new URLSearchParams(window.location.search).get('view') === 'presenter';
+
 createRoot(document.getElementById('root')!).render(
-  <div style={{ maxWidth: 1100, margin: '0 auto', padding: 32 }}>
-    <Section label="Host board — the 2×2 shared to the room">
-      <ConferenceResults
-        aggregate={aggregate}
-        hostPlayerId={HOST_ID}
-        myPlayerId={HOST_ID}
-        myRanking={aggregate.hostRanking}
-        variant="host"
-      />
-    </Section>
+  isPresenter ? (
+    <>
+      {/* Mounted first so its subscription is live before PresenterView asks. */}
+      <StubHost />
+      <PresenterView />
+    </>
+  ) : (
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: 32 }}>
+      <Section label="Host board — the 2×2 shared to the room">
+        <ConferenceResults
+          aggregate={aggregate}
+          hostPlayerId={HOST_ID}
+          myPlayerId={HOST_ID}
+          myRanking={aggregate.hostRanking}
+          variant="host"
+        />
+      </Section>
 
-    <Section label="Player personal report — panels 2 and 4 re-pointed at 'you'">
-      <ConferenceResults
-        aggregate={aggregate}
-        hostPlayerId={HOST_ID}
-        myPlayerId="p9"
-        myRanking={myRanking}
-        variant="player"
-      />
-    </Section>
-
-    <Section label="Pop-out single panel, large scale (Phase 3 preview)">
-      <ConferenceResults
-        aggregate={aggregate}
-        hostPlayerId={HOST_ID}
-        myPlayerId={HOST_ID}
-        myRanking={aggregate.hostRanking}
-        variant="host"
-        focus="verdict"
-        scale="large"
-      />
-    </Section>
-  </div>
+      <Section label="Player personal report — panels 2 and 4 re-pointed at 'you'">
+        <ConferenceResults
+          aggregate={aggregate}
+          hostPlayerId={HOST_ID}
+          myPlayerId="p9"
+          myRanking={myRanking}
+          variant="player"
+        />
+      </Section>
+    </div>
+  )
 );
