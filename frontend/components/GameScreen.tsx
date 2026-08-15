@@ -11,6 +11,7 @@ import Timer from './Timer';
 import InstructionsLoop from './InstructionsLoop';
 import JoinQR from './JoinQR';
 import ConferenceResults from './conference/ConferenceResults';
+import { getPlayerId } from '../lib/playerId';
 import {
   PresenterResults,
   notifyPresenterGameStarted,
@@ -104,7 +105,11 @@ export default function GameScreen({
   // Ref keeps current players without triggering handler re-registration
   const playersRef = useRef<Player[]>(initialSession.players);
 
-  const isHost = connection.connectionId === hostPlayerId;
+  // Identity comes from the durable player id, never the connection id — the
+  // latter changes on every reconnect, which would silently strip host controls
+  // and break every pairing lookup after a brief drop.
+  const myPlayerId = getPlayerId();
+  const isHost = myPlayerId === hostPlayerId;
 
   // Last payload sent to the presenter popup, so it can be replayed when a
   // popup opens after results were already published.
@@ -129,7 +134,7 @@ export default function GameScreen({
   // guessing phase actually begins.
   useEffect(() => {
     if (phase !== 'guessing' || !currentRound || targetInfo) return;
-    const myId = connection.connectionId;
+    const myId = getPlayerId();
     if (!myId || !currentRound.pairings) return;
     const targetId = currentRound.pairings[myId];
     if (!targetId) return;
@@ -286,7 +291,7 @@ export default function GameScreen({
 
       setPhase('splash'); // show match splash before ranking; timer starts after splash
       // Resolve our target from pairings using ref (avoids stale closure on players state)
-      const myId = connection.connectionId;
+      const myId = getPlayerId();
       if (myId && round.pairings) {
         const targetId = round.pairings[myId];
         if (targetId) {
@@ -552,7 +557,15 @@ export default function GameScreen({
 
           <div className="mt-6 space-y-2">
             {players.map(p => (
-              <div key={p.playerId} className="text-white">{p.name}</div>
+              <div
+                key={p.playerId}
+                className={p.isConnected === false ? 'text-zinc-600' : 'text-white'}
+              >
+                {p.name}
+                {p.isConnected === false && (
+                  <span className="text-zinc-600 text-xs ml-2">(away)</span>
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -583,7 +596,9 @@ export default function GameScreen({
           <p className="text-zinc-400 text-sm">
             <span className="text-neon font-mono font-bold">{rankingProgress?.submitted ?? 0}</span>
             {' of '}
-            <span className="font-mono">{rankingProgress?.total ?? players.length}</span>
+            <span className="font-mono">
+              {rankingProgress?.total ?? players.filter(p => p.isConnected !== false).length}
+            </span>
             {' ranked'}
           </p>
           <button
@@ -643,7 +658,7 @@ export default function GameScreen({
           <ConferenceResults
             aggregate={aggregate}
             hostPlayerId={hostPlayerId}
-            myPlayerId={connection.connectionId}
+            myPlayerId={myPlayerId}
             myRanking={myRanking}
             variant={isHost ? 'host' : 'player'}
           />

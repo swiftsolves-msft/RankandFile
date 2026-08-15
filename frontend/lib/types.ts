@@ -7,9 +7,12 @@ export interface Card {
 }
 
 export interface Player {
+  /** Durable id that survives a refresh — not the SignalR connection id. */
   playerId: string;
   name: string;
   totalScore: number;
+  /** False while the player is away; they keep their score and ranking. */
+  isConnected: boolean;
 }
 
 export interface Round {
@@ -94,4 +97,6 @@ export interface GuessResult {
   actual: string[];
   guessed: string[];
   matchInfo: Record<string, 'exact' | 'near' | 'miss'>;
+  /** Partner left before ranking — there was nothing to score against. */
+  partnerDropped?: boolean;
 }

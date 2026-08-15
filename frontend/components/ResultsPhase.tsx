@@ -53,6 +53,25 @@ export default function ResultsPhase({
   const cardMap = Object.fromEntries(cards.map(c => [c.noun, c]));
   const maxScore = cards.length * 3;
 
+  // Partner left before ranking, so there is nothing to compare against. Say so
+  // plainly rather than rendering an empty comparison table.
+  if (result.partnerDropped) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <div className="text-6xl mb-4">📴</div>
+          <h2 className="text-3xl font-bold text-white mb-2">
+            <span className="text-cyber">{result.targetName}</span> dropped out
+          </h2>
+          <p className="text-zinc-400 max-w-md mx-auto">
+            They left before submitting a ranking, so there was nothing to score this
+            round. No points lost — you&apos;ll be paired with someone new next round.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}

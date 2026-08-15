@@ -12,4 +12,10 @@ public class Round
     // Conference mode only — the room-wide result computed when rankings close.
     // Non-null also acts as the idempotency guard so a round can only close once.
     public RoundAggregate? Aggregate { get; set; }
+
+    // Completion latches. The same checks now run from several triggers — a
+    // submission, a disconnect shrinking the expected count, the host closing
+    // early — so each transition has to fire exactly once.
+    public bool RankingsClosed { get; set; }
+    public bool RoundEnded { get; set; }
 }
