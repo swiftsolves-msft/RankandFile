@@ -6,7 +6,7 @@ agrees, where it quietly does not, and which topics are worth arguing about.
 
 **[Play at zerorank.net](https://zerorank.net)**
 
-![ZeroRank](images/zerorank.png)
+![ZeroRank](images/zeroranklogo.png)
 
 ---
 
