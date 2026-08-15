@@ -327,7 +327,7 @@ export default function GameScreen({
 
               {/* Game mode selector */}
               <div className="bg-zinc-800 rounded-2xl px-8 py-5">
-                <p className="text-zinc-300 text-sm font-semibold uppercase tracking-widest mb-4">Game Mode</p>
+                <p className="text-zinc-300 text-sm font-semibold uppercase tracking-widest mb-4">Card Mode</p>
                 <div className="flex items-center gap-6 justify-center">
                   <button
                     onClick={() => handleModeChange('normal')}
