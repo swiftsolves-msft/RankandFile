@@ -21,14 +21,17 @@ public class GameHub : Hub
     private readonly CardGeneratorService _cardGen;
     private readonly PairingService _pairingService;
     private readonly ScoringService _scoringService;
+    private readonly ConsensusService _consensusService;
 
     public GameHub(SessionRepository repo, CardGeneratorService cardGen,
-                   PairingService pairingService, ScoringService scoringService)
+                   PairingService pairingService, ScoringService scoringService,
+                   ConsensusService consensusService)
     {
         _repo = repo;
         _cardGen = cardGen;
         _pairingService = pairingService;
         _scoringService = scoringService;
+        _consensusService = consensusService;
     }
 
     public async Task JoinSession(string sessionCode, string playerName)
@@ -100,7 +103,25 @@ public class GameHub : Hub
         }
     }
 
+    /// <summary>How the cards read: "normal" | "meme". Host-only, lobby-only.</summary>
+    public async Task SetCardMode(string sessionCode, string cardMode)
+    {
+        await SetLobbyOption(sessionCode, "card mode", session =>
+            session.CardMode = cardMode == "meme" ? "meme" : "normal");
+    }
+
+    /// <summary>
+    /// What a round does: "icebreaker" (pair and guess) | "conference" (aggregate
+    /// the whole room). Host-only, lobby-only.
+    /// </summary>
     public async Task SetGameMode(string sessionCode, string gameMode)
+    {
+        await SetLobbyOption(sessionCode, "game mode", session =>
+            session.GameMode = gameMode == "conference" ? "conference" : "icebreaker");
+    }
+
+    /// Shared guard for host-only options that may only change before kickoff.
+    private async Task SetLobbyOption(string sessionCode, string label, Action<Session> apply)
     {
         try
         {
@@ -111,17 +132,16 @@ public class GameHub : Hub
                 return;
             }
 
-            // Only the host can change the game mode, and only before the game starts.
             if (Context.ConnectionId != session.HostPlayerId || session.Status != "Lobby")
                 return;
 
-            session.GameMode = gameMode == "meme" ? "meme" : "normal";
+            apply(session);
             await _repo.SaveSessionAsync(session);
             await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
         }
         catch (Exception ex)
         {
-            await Clients.Caller.SendAsync("Error", $"Failed to set game mode: {ex.Message}");
+            await Clients.Caller.SendAsync("Error", $"Failed to set {label}: {ex.Message}");
         }
     }
 
@@ -167,13 +187,18 @@ public class GameHub : Hub
 
             round.Cards = _cardGen.GenerateRoundCards();
 
-            var lookup = new HashSet<string>(session.PreviousPairs);
-            var (pairings, triple) = _pairingService.CreatePairings(session.Players, lookup);
-            round.Pairings = pairings;
-            round.Triple = triple;
+            // Conference rounds have no matching engine — everyone ranks, and the
+            // room is aggregated instead. Pairings/Triple stay empty.
+            if (!session.IsConference)
+            {
+                var lookup = new HashSet<string>(session.PreviousPairs);
+                var (pairings, triple) = _pairingService.CreatePairings(session.Players, lookup);
+                round.Pairings = pairings;
+                round.Triple = triple;
 
-            // Persist updated previous pairs back to the list
-            session.PreviousPairs = lookup.ToList();
+                // Persist updated previous pairs back to the list
+                session.PreviousPairs = lookup.ToList();
+            }
 
             session.Rounds.Add(round);
             session.Status = "Playing";
@@ -216,8 +241,21 @@ public class GameHub : Hub
             currentRound.Rankings[Context.ConnectionId] = rankedNouns;
             await _repo.SaveSessionAsync(session);
 
-            if (currentRound.Rankings.Count == session.Players.Count)
+            if (session.IsConference)
+            {
+                // Conference rounds close on the timer, never on a full house — a
+                // ghost player left behind by a refresh must not be able to stall
+                // the room. Broadcast progress so the host sees the count fill in.
+                await Clients.Group(sessionCode).SendAsync("RankingProgress", new
+                {
+                    Submitted = currentRound.Rankings.Count,
+                    Total = session.Players.Count,
+                });
+            }
+            else if (currentRound.Rankings.Count == session.Players.Count)
+            {
                 await Clients.Group(sessionCode).SendAsync("AllRankingsSubmitted");
+            }
         }
         catch (Exception ex)
         {
@@ -241,6 +279,9 @@ public class GameHub : Hub
                 await Clients.Caller.SendAsync("Error", "Session not found when submitting guess.");
                 return;
             }
+
+            // Conference mode has no matching engine and therefore no guessing.
+            if (session.IsConference) return;
 
             if (session.Rounds.Count == 0)
             {
@@ -317,6 +358,53 @@ public class GameHub : Hub
         catch (Exception ex)
         {
             await Clients.Caller.SendAsync("Error", $"Failed to submit guess: {ex.Message}");
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    /// <summary>
+    /// Conference mode: closes the ranking window and publishes the room's
+    /// aggregate. The host's client fires this when the round timer expires
+    /// (after a short grace period for in-flight submissions), and a manual host
+    /// control calls it as a fallback. Idempotent — the first call wins, so a
+    /// duplicate from the grace timer plus a button press is harmless.
+    /// </summary>
+    public async Task CloseRankings(string sessionCode)
+    {
+        var sem = _sessionLocks.GetOrAdd(sessionCode, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync();
+        try
+        {
+            var session = await _repo.GetSessionAsync(sessionCode);
+            if (session == null)
+            {
+                await Clients.Caller.SendAsync("Error", "Session not found.");
+                return;
+            }
+
+            if (!session.IsConference) return;
+            if (Context.ConnectionId != session.HostPlayerId) return;
+            if (session.Rounds.Count == 0) return;
+
+            var currentRound = session.Rounds.Last();
+            if (currentRound.Aggregate != null) return; // already closed
+
+            var aggregate = _consensusService.Compute(
+                currentRound, session.Players, session.HostPlayerId);
+            aggregate.IsFinalRound = session.CurrentRound >= session.MaxRounds;
+
+            currentRound.Aggregate = aggregate;
+            if (aggregate.IsFinalRound) session.Status = "Finished";
+
+            await _repo.SaveSessionAsync(session);
+            await Clients.Group(sessionCode).SendAsync("RoundAggregate", aggregate);
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("Error", $"Failed to close rankings: {ex.Message}");
         }
         finally
         {

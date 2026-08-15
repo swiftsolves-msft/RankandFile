@@ -11,9 +11,18 @@ import Timer from './Timer';
 import InstructionsLoop from './InstructionsLoop';
 import JoinQR from './JoinQR';
 import { openPresenterWindow, notifyPresenterGameStarted } from '../lib/presenter';
-import { GuessResult, Player, Round, Session } from '../lib/types';
+import {
+  GuessResult, Player, RankingProgress, Round, RoundAggregate, Session,
+} from '../lib/types';
 
-type GameMode = 'normal' | 'meme';
+/** How the cards read. */
+type CardMode = 'normal' | 'meme';
+/** What a round actually does. */
+type GameMode = 'icebreaker' | 'conference';
+
+/** Grace period after the ranking clock hits zero before the host closes the
+ *  round, so submissions still in flight at t=0 are counted. */
+const CLOSE_GRACE_MS = 2000;
 
 interface TargetInfo {
   targetId: string;
@@ -30,7 +39,7 @@ export default function GameScreen({
   connection: HubConnection;
 }) {
   const sessionCode = initialSession.sessionCode;
-  const [phase, setPhase] = useState<'lobby' | 'splash' | 'ranking' | 'guessing' | 'results' | 'leaderboard' | 'gameover'>('lobby');
+  const [phase, setPhase] = useState<'lobby' | 'splash' | 'ranking' | 'guessing' | 'results' | 'leaderboard' | 'gameover' | 'aggregate'>('lobby');
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [targetInfo, setTargetInfo] = useState<TargetInfo | null>(null);
   const [lastResult, setLastResult] = useState<GuessResult | null>(null);
@@ -45,12 +54,27 @@ export default function GameScreen({
   const [selectedRounds, setSelectedRounds] = useState<1 | 2 | 3>(2);
   const [maxRounds, setMaxRounds] = useState<number>(initialSession.maxRounds ?? 2);
 
-  // Game mode — host selects before first round; locked in once game starts.
-  const [selectedMode, setSelectedMode] = useState<GameMode>('normal');
-  const [gameMode, setGameMode] = useState<GameMode>(
-    (initialSession.gameMode as GameMode) ?? 'normal'
+  // Card mode — how the cards read. Host selects before first round.
+  const [selectedCardMode, setSelectedCardMode] = useState<CardMode>('normal');
+  const [cardMode, setCardMode] = useState<CardMode>(
+    (initialSession.cardMode as CardMode) ?? 'normal'
   );
+
+  // Game mode — what a round does. Host selects before first round.
+  // Compare against 'conference' rather than 'icebreaker': a session created
+  // before this axis existed carries a card-mode value here, and falling through
+  // to icebreaker is the correct default.
+  const [selectedGameMode, setSelectedGameMode] = useState<GameMode>('icebreaker');
+  const [gameMode, setGameMode] = useState<GameMode>(
+    initialSession.gameMode === 'conference' ? 'conference' : 'icebreaker'
+  );
+  const isConference = gameMode === 'conference';
+
   const [roundNum, setRoundNum] = useState<number>(0);
+
+  // Conference-only state
+  const [aggregate, setAggregate] = useState<RoundAggregate | null>(null);
+  const [rankingProgress, setRankingProgress] = useState<RankingProgress | null>(null);
 
   // Per-round submission tracking — used to show "waiting for partner" UI
   // without changing phase or clearing timer until the server confirms all done.
@@ -68,6 +92,10 @@ export default function GameScreen({
   const playersRef = useRef<Player[]>(initialSession.players);
 
   const isHost = connection.connectionId === hostPlayerId;
+
+  // This player's own row in the round aggregate, for their personal report.
+  const myAlignment =
+    aggregate?.alignments.find(a => a.playerId === connection.connectionId) ?? null;
 
   // Transition to leaderboard/gameover once:
   // 1) all guesses submitted (pendingLeaderboard populated)
@@ -111,6 +139,10 @@ export default function GameScreen({
   phaseRef.current = phase;
   const targetInfoRef = useRef(targetInfo);
   targetInfoRef.current = targetInfo;
+  // Hub handlers are registered once, so they must read the mode from a ref
+  // rather than closing over the state value.
+  const gameModeRef = useRef(gameMode);
+  gameModeRef.current = gameMode;
   // True while a timer is actively counting down (distinguishes expiry from initial timer=0)
   const countingRef = useRef(false);
 
@@ -130,11 +162,22 @@ export default function GameScreen({
   // Fire auto-submit when the countdown reaches 0.
   // Kept as a separate useEffect so side-effects (invoke, setState) are legal here.
   useEffect(() => {
-    if (timer === 0 && countingRef.current) {
-      countingRef.current = false;
-      autoSubmitRef.current?.();
+    if (timer !== 0 || !countingRef.current) return;
+    countingRef.current = false;
+    autoSubmitRef.current?.();
+
+    // Conference rounds close on the clock, never on a full house — a ghost
+    // player left behind by a refresh must not be able to stall the room. The
+    // host fires the close after a short grace so rankings still in flight at
+    // t=0 are counted; CloseRankings is idempotent server-side, so the manual
+    // "Show Results Now" button colliding with this is harmless.
+    if (gameModeRef.current === 'conference' && phaseRef.current === 'ranking' && isHost) {
+      const id = setTimeout(() => {
+        connection.invoke('CloseRankings', sessionCode).catch(console.error);
+      }, CLOSE_GRACE_MS);
+      return () => clearTimeout(id);
     }
-  }, [timer]);
+  }, [timer, isHost, connection, sessionCode]);
 
   // Callback registered by RankingPhase/GuessingPhase so we can auto-submit on timeout.
   // Reads phase/targetInfo from refs (always current) — no stale-closure risk.
@@ -163,7 +206,8 @@ export default function GameScreen({
       setPlayers(s.players);
       setHostPlayerId(s.hostPlayerId);
       if (s.maxRounds) setMaxRounds(s.maxRounds);
-      if (s.gameMode) setGameMode(s.gameMode as GameMode);
+      if (s.cardMode) setCardMode(s.cardMode as CardMode);
+      setGameMode(s.gameMode === 'conference' ? 'conference' : 'icebreaker');
     });
 
     connection.on('RoundStarted', (round: Round) => {
@@ -173,10 +217,23 @@ export default function GameScreen({
       notifyPresenterGameStarted();
       setCurrentRound(round);
       setRoundNum(round.roundNum);
-      setPhase('splash'); // show match splash before ranking; timer starts after splash
       setHasSubmittedRanking(false);
       setHasSubmittedGuess(false);
       setTargetInfo(null); // reset so fallback effect can re-resolve for guessing phase
+      setAggregate(null);
+      setRankingProgress(null);
+
+      // Conference has no pairing, so there is no partner to reveal — go straight
+      // to ranking. Showing the splash here would strand the round: MatchSplash
+      // only mounts when targetInfo exists, and it owns the callback that
+      // advances to the ranking phase.
+      if (gameModeRef.current === 'conference') {
+        setPhase('ranking');
+        setTimer(60);
+        return;
+      }
+
+      setPhase('splash'); // show match splash before ranking; timer starts after splash
       // Resolve our target from pairings using ref (avoids stale closure on players state)
       const myId = connection.connectionId;
       if (myId && round.pairings) {
@@ -200,6 +257,19 @@ export default function GameScreen({
     connection.on('AllRankingsSubmitted', () => {
       setTimer(60);
       setPhase('guessing');
+    });
+
+    // Conference: live submission count so the host can see the room filling in.
+    connection.on('RankingProgress', (p: RankingProgress) => {
+      setRankingProgress(p);
+    });
+
+    // Conference: the room's aggregated result, replacing guess/results/leaderboard.
+    connection.on('RoundAggregate', (agg: RoundAggregate) => {
+      autoSubmitRef.current = null;
+      setTimer(0);
+      setAggregate(agg);
+      setPhase('aggregate');
     });
 
     connection.on('GuessResult', (result: GuessResult) => {
@@ -242,6 +312,8 @@ export default function GameScreen({
       connection.off('SessionUpdated');
       connection.off('RoundStarted');
       connection.off('AllRankingsSubmitted');
+      connection.off('RankingProgress');
+      connection.off('RoundAggregate');
       connection.off('GuessResult');
       connection.off('LeaderboardUpdate');
       connection.off('GameOver');
@@ -276,10 +348,21 @@ export default function GameScreen({
     connection.invoke('StartNewRound', sessionCode, selectedRounds).catch(console.error);
   };
 
-  // Called whenever the host changes the mode toggle in the lobby.
-  const handleModeChange = (mode: GameMode) => {
-    setSelectedMode(mode);
+  // Called whenever the host changes a lobby toggle.
+  const handleCardModeChange = (mode: CardMode) => {
+    setSelectedCardMode(mode);
+    connection.invoke('SetCardMode', sessionCode, mode).catch(console.error);
+  };
+
+  const handleGameModeChange = (mode: GameMode) => {
+    setSelectedGameMode(mode);
     connection.invoke('SetGameMode', sessionCode, mode).catch(console.error);
+  };
+
+  // Conference fallback: lets the host publish results immediately rather than
+  // waiting out the clock (or if the auto-close ever misfires).
+  const handleCloseRankings = () => {
+    connection.invoke('CloseRankings', sessionCode).catch(console.error);
   };
 
   return (
@@ -325,14 +408,46 @@ export default function GameScreen({
                 </p>
               </div>
 
-              {/* Game mode selector */}
+              {/* Game mode selector — what a round does */}
+              <div className="bg-zinc-800 rounded-2xl px-8 py-5">
+                <p className="text-zinc-300 text-sm font-semibold uppercase tracking-widest mb-4">Game Mode</p>
+                <div className="flex items-center gap-6 justify-center">
+                  <button
+                    onClick={() => handleGameModeChange('icebreaker')}
+                    className={`px-6 py-3 rounded-xl font-bold transition border-2 ${
+                      selectedGameMode === 'icebreaker'
+                        ? 'bg-neon text-black border-neon'
+                        : 'bg-zinc-700 text-zinc-300 border-zinc-600 hover:border-neon hover:text-neon'
+                    }`}
+                  >
+                    Ice Breaker
+                  </button>
+                  <button
+                    onClick={() => handleGameModeChange('conference')}
+                    className={`px-6 py-3 rounded-xl font-bold transition border-2 ${
+                      selectedGameMode === 'conference'
+                        ? 'bg-cyber text-black border-cyber'
+                        : 'bg-zinc-700 text-zinc-300 border-zinc-600 hover:border-cyber hover:text-cyber'
+                    }`}
+                  >
+                    🎤 Conference
+                  </button>
+                </div>
+                <p className="text-zinc-500 text-xs mt-3">
+                  {selectedGameMode === 'conference'
+                    ? 'No pairing — the whole room is aggregated and discussed'
+                    : 'Pair up and guess your partner’s ranking'}
+                </p>
+              </div>
+
+              {/* Card mode selector — how the cards read */}
               <div className="bg-zinc-800 rounded-2xl px-8 py-5">
                 <p className="text-zinc-300 text-sm font-semibold uppercase tracking-widest mb-4">Card Mode</p>
                 <div className="flex items-center gap-6 justify-center">
                   <button
-                    onClick={() => handleModeChange('normal')}
+                    onClick={() => handleCardModeChange('normal')}
                     className={`px-6 py-3 rounded-xl font-bold transition border-2 ${
-                      selectedMode === 'normal'
+                      selectedCardMode === 'normal'
                         ? 'bg-neon text-black border-neon'
                         : 'bg-zinc-700 text-zinc-300 border-zinc-600 hover:border-neon hover:text-neon'
                     }`}
@@ -340,9 +455,9 @@ export default function GameScreen({
                     Normal
                   </button>
                   <button
-                    onClick={() => handleModeChange('meme')}
+                    onClick={() => handleCardModeChange('meme')}
                     className={`px-6 py-3 rounded-xl font-bold transition border-2 ${
-                      selectedMode === 'meme'
+                      selectedCardMode === 'meme'
                         ? 'bg-red-500 text-black border-red-500'
                         : 'bg-zinc-700 text-zinc-300 border-zinc-600 hover:border-red-400 hover:text-red-400'
                     }`}
@@ -351,7 +466,7 @@ export default function GameScreen({
                   </button>
                 </div>
                 <p className="text-zinc-500 text-xs mt-3">
-                  {selectedMode === 'meme'
+                  {selectedCardMode === 'meme'
                     ? 'Chaotic descriptions — not for the faint of heart'
                     : 'Professional tooltips — keeping it corporate'}
                 </p>
@@ -410,13 +525,32 @@ export default function GameScreen({
         <Timer seconds={timer} color={timer <= 10 ? 'red-400' : 'neon'} />
       )}
 
+      {/* Conference: the host watches the room fill in, and can publish early. */}
+      {isConference && phase === 'ranking' && isHost && (
+        <div className="text-center space-y-3">
+          <p className="text-zinc-400 text-sm">
+            <span className="text-neon font-mono font-bold">{rankingProgress?.submitted ?? 0}</span>
+            {' of '}
+            <span className="font-mono">{rankingProgress?.total ?? players.length}</span>
+            {' ranked'}
+          </p>
+          <button
+            onClick={handleCloseRankings}
+            className="px-6 py-2 bg-zinc-800 text-zinc-200 font-semibold text-sm rounded-xl border border-zinc-600 hover:border-cyber hover:text-cyber transition"
+            title="Publish the room's results now instead of waiting for the clock."
+          >
+            Show Results Now
+          </button>
+        </div>
+      )}
+
       {phase === 'ranking' && currentRound && (
         <RankingPhase
           cards={currentRound.cards}
           onSubmit={handleSubmitRanking}
           onTimeUp={handleTimeUp}
           hasSubmitted={hasSubmittedRanking}
-          isMeme={gameMode === 'meme'}
+          isMeme={cardMode === 'meme'}
         />
       )}
 
@@ -429,7 +563,7 @@ export default function GameScreen({
           onSubmit={handleSubmitGuess}
           onTimeUp={handleTimeUp}
           hasSubmitted={hasSubmittedGuess}
-          isMeme={gameMode === 'meme'}
+          isMeme={cardMode === 'meme'}
         />
       )}
 
@@ -440,6 +574,104 @@ export default function GameScreen({
           discussionActive={discussionActive}
           onDiscussionEnd={() => setDiscussionDone(true)}
         />
+      )}
+
+      {/*
+        Conference results. This is the plain verification view for the aggregation
+        backend — the four-panel dashboard and the presenter pop-out replace it in
+        the next phase.
+      */}
+      {phase === 'aggregate' && aggregate && (
+        <div className="space-y-6">
+          <div className="text-center">
+            <p className="text-zinc-300 text-sm uppercase tracking-widest">The room has spoken</p>
+            <p className="text-zinc-500 text-xs mt-1">
+              {aggregate.submittedCount} of {aggregate.playerCount} ranked · room averaged{' '}
+              {aggregate.roomAverageAlignment}% alignment
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-5">
+            <p className="text-zinc-300 text-xs font-semibold uppercase tracking-widest mb-3">
+              The Room&apos;s Verdict
+            </p>
+            {aggregate.consensus.map(c => (
+              <div key={c.noun} className="flex items-center gap-3 mb-2 text-sm">
+                <span className="text-zinc-500 font-mono w-4">{c.position}</span>
+                <span className="flex-1 text-white">
+                  {c.noun}
+                  {c.isSpicy && <span className="ml-2 text-[10px] text-red-400">SPICY</span>}
+                  {c.noun === aggregate.mostDivisiveNoun && (
+                    <span className="ml-2 text-[10px] text-yellow-400">MOST DIVIDED</span>
+                  )}
+                </span>
+                <span className="flex gap-0.5">
+                  {c.distribution.map((v, i) => (
+                    <span
+                      key={i}
+                      className="w-6 text-center text-[11px] font-mono text-zinc-400 bg-zinc-800 rounded"
+                    >
+                      {v}
+                    </span>
+                  ))}
+                </span>
+                <span className="text-zinc-400 font-mono text-xs w-10 text-right">{c.meanRank}</span>
+              </div>
+            ))}
+          </div>
+
+          {myAlignment && (
+            <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-5 text-center">
+              <p className="text-zinc-300 text-xs font-semibold uppercase tracking-widest mb-2">
+                Your Alignment
+              </p>
+              <p className="text-5xl font-bold text-neon">{myAlignment.toRoom}%</p>
+              <p className="text-zinc-500 text-xs mt-2">
+                the room averaged {aggregate.roomAverageAlignment}%
+              </p>
+            </div>
+          )}
+
+          {aggregate.outliers.length > 0 && (
+            <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-5">
+              <p className="text-zinc-300 text-xs font-semibold uppercase tracking-widest mb-3">
+                The Contrarians
+              </p>
+              {aggregate.outliers.map(o => (
+                <div key={o.playerId} className="mb-3 border-l-2 border-red-500/40 pl-3">
+                  <span className="text-white font-semibold text-sm">{o.name}</span>
+                  <span className="text-red-400 font-mono text-[11px] ml-2">{o.toRoom}% aligned</span>
+                  <div className="text-zinc-400 text-xs mt-0.5">
+                    Put <span className="text-white">{o.noun}</span> at #{o.theirPosition} — the room
+                    said #{o.roomPosition}.
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="text-center">
+            {aggregate.isFinalRound ? (
+              <button
+                onClick={() => { window.location.href = window.location.origin; }}
+                className="px-8 py-3 bg-zinc-700 text-zinc-200 font-bold text-lg rounded-xl hover:bg-zinc-600 transition"
+              >
+                Return to Home
+              </button>
+            ) : isHost ? (
+              <button
+                onClick={handleStartRound}
+                className="px-8 py-3 bg-neon text-black font-bold text-lg rounded-xl hover:opacity-90 transition"
+              >
+                START NEXT ROUND
+              </button>
+            ) : (
+              <p className="text-zinc-500 text-sm uppercase tracking-widest">
+                Waiting for the host…
+              </p>
+            )}
+          </div>
+        </div>
       )}
 
       {(phase === 'leaderboard' || phase === 'gameover') && (

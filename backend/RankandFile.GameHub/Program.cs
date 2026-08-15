@@ -87,6 +87,7 @@ builder.Services.AddSingleton<SessionRepository>();
 builder.Services.AddSingleton<CardGeneratorService>();
 builder.Services.AddSingleton<PairingService>();
 builder.Services.AddSingleton<ScoringService>();
+builder.Services.AddSingleton<ConsensusService>();
 
 var app = builder.Build();
 
