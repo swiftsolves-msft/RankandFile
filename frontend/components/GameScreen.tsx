@@ -10,6 +10,7 @@ import MatchSplash from './MatchSplash';
 import Timer from './Timer';
 import InstructionsLoop from './InstructionsLoop';
 import JoinQR from './JoinQR';
+import ConferenceResults from './conference/ConferenceResults';
 import { openPresenterWindow, notifyPresenterGameStarted } from '../lib/presenter';
 import {
   GuessResult, Player, RankingProgress, Round, RoundAggregate, Session,
@@ -75,6 +76,10 @@ export default function GameScreen({
   // Conference-only state
   const [aggregate, setAggregate] = useState<RoundAggregate | null>(null);
   const [rankingProgress, setRankingProgress] = useState<RankingProgress | null>(null);
+  // What this player actually submitted, kept client-side so the personal
+  // "You vs The Room" panel can render without fanning per-player rankings out
+  // through the broadcast payload.
+  const [myRanking, setMyRanking] = useState<string[]>([]);
 
   // Per-round submission tracking — used to show "waiting for partner" UI
   // without changing phase or clearing timer until the server confirms all done.
@@ -92,10 +97,6 @@ export default function GameScreen({
   const playersRef = useRef<Player[]>(initialSession.players);
 
   const isHost = connection.connectionId === hostPlayerId;
-
-  // This player's own row in the round aggregate, for their personal report.
-  const myAlignment =
-    aggregate?.alignments.find(a => a.playerId === connection.connectionId) ?? null;
 
   // Transition to leaderboard/gameover once:
   // 1) all guesses submitted (pendingLeaderboard populated)
@@ -188,6 +189,7 @@ export default function GameScreen({
       const ranked = getRanked();
       if (phaseRef.current === 'ranking') {
         connection.invoke('SubmitRanking', sessionCode, ranked).catch(console.error);
+        setMyRanking(ranked);
         setHasSubmittedRanking(true);
       } else if (phaseRef.current === 'guessing') {
         const ti = targetInfoRef.current;
@@ -222,6 +224,7 @@ export default function GameScreen({
       setTargetInfo(null); // reset so fallback effect can re-resolve for guessing phase
       setAggregate(null);
       setRankingProgress(null);
+      setMyRanking([]);
 
       // Conference has no pairing, so there is no partner to reveal — go straight
       // to ranking. Showing the splash here would strand the round: MatchSplash
@@ -332,6 +335,7 @@ export default function GameScreen({
 
   const handleSubmitRanking = (ranked: string[]) => {
     connection.invoke('SubmitRanking', sessionCode, ranked).catch(console.error);
+    setMyRanking(ranked);
     setHasSubmittedRanking(true);
     // Phase stays 'ranking' and timer keeps running until AllRankingsSubmitted fires.
   };
@@ -576,11 +580,8 @@ export default function GameScreen({
         />
       )}
 
-      {/*
-        Conference results. This is the plain verification view for the aggregation
-        backend — the four-panel dashboard and the presenter pop-out replace it in
-        the next phase.
-      */}
+      {/* Conference results — the host sees the room board, players see the
+          same four squares re-pointed at themselves. */}
       {phase === 'aggregate' && aggregate && (
         <div className="space-y-6">
           <div className="text-center">
@@ -591,66 +592,15 @@ export default function GameScreen({
             </p>
           </div>
 
-          <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-5">
-            <p className="text-zinc-300 text-xs font-semibold uppercase tracking-widest mb-3">
-              The Room&apos;s Verdict
-            </p>
-            {aggregate.consensus.map(c => (
-              <div key={c.noun} className="flex items-center gap-3 mb-2 text-sm">
-                <span className="text-zinc-500 font-mono w-4">{c.position}</span>
-                <span className="flex-1 text-white">
-                  {c.noun}
-                  {c.isSpicy && <span className="ml-2 text-[10px] text-red-400">SPICY</span>}
-                  {c.noun === aggregate.mostDivisiveNoun && (
-                    <span className="ml-2 text-[10px] text-yellow-400">MOST DIVIDED</span>
-                  )}
-                </span>
-                <span className="flex gap-0.5">
-                  {c.distribution.map((v, i) => (
-                    <span
-                      key={i}
-                      className="w-6 text-center text-[11px] font-mono text-zinc-400 bg-zinc-800 rounded"
-                    >
-                      {v}
-                    </span>
-                  ))}
-                </span>
-                <span className="text-zinc-400 font-mono text-xs w-10 text-right">{c.meanRank}</span>
-              </div>
-            ))}
-          </div>
+          <ConferenceResults
+            aggregate={aggregate}
+            hostPlayerId={hostPlayerId}
+            myPlayerId={connection.connectionId}
+            myRanking={myRanking}
+            variant={isHost ? 'host' : 'player'}
+          />
 
-          {myAlignment && (
-            <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-5 text-center">
-              <p className="text-zinc-300 text-xs font-semibold uppercase tracking-widest mb-2">
-                Your Alignment
-              </p>
-              <p className="text-5xl font-bold text-neon">{myAlignment.toRoom}%</p>
-              <p className="text-zinc-500 text-xs mt-2">
-                the room averaged {aggregate.roomAverageAlignment}%
-              </p>
-            </div>
-          )}
-
-          {aggregate.outliers.length > 0 && (
-            <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-5">
-              <p className="text-zinc-300 text-xs font-semibold uppercase tracking-widest mb-3">
-                The Contrarians
-              </p>
-              {aggregate.outliers.map(o => (
-                <div key={o.playerId} className="mb-3 border-l-2 border-red-500/40 pl-3">
-                  <span className="text-white font-semibold text-sm">{o.name}</span>
-                  <span className="text-red-400 font-mono text-[11px] ml-2">{o.toRoom}% aligned</span>
-                  <div className="text-zinc-400 text-xs mt-0.5">
-                    Put <span className="text-white">{o.noun}</span> at #{o.theirPosition} — the room
-                    said #{o.roomPosition}.
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="text-center">
+          <div className="flex flex-wrap items-center justify-center gap-4">
             {aggregate.isFinalRound ? (
               <button
                 onClick={() => { window.location.href = window.location.origin; }}
