@@ -1,12 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import {
-  DECK_LIMITS,
-  SAMPLE_DECK_DOWNLOAD_URL,
-  SAMPLE_DECK_VIEW_URL,
-  parseAndValidateDeck,
-} from '../lib/deckValidation';
+import { DECK_LIMITS, SAMPLE_DECKS_URL, parseAndValidateDeck } from '../lib/deckValidation';
 import { CardDeck } from '../lib/types';
 
 interface Loaded {
@@ -96,21 +91,12 @@ export default function DeckUpload({
         </button>
 
         <a
-          href={SAMPLE_DECK_DOWNLOAD_URL}
+          href={SAMPLE_DECKS_URL}
           target="_blank"
           rel="noreferrer"
           className="px-5 py-2.5 bg-zinc-800 text-zinc-300 font-semibold text-sm rounded-xl border border-zinc-700 hover:border-neon hover:text-neon transition"
         >
-          Download sample deck
-        </a>
-
-        <a
-          href={SAMPLE_DECK_VIEW_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="text-zinc-400 text-sm underline underline-offset-4 hover:text-cyber transition"
-        >
-          View format on GitHub
+          Browse sample decks
         </a>
       </div>
 

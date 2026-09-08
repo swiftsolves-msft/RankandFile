@@ -20,11 +20,8 @@ export const DECK_LIMITS = {
   maxFileBytes: 512 * 1024,
 } as const;
 
-/** Where authors can find a worked example to copy. */
-export const SAMPLE_DECK_VIEW_URL =
-  'https://github.com/swiftsolves-msft/RankandFile/blob/main/decks/cloud-and-ai.json';
-export const SAMPLE_DECK_DOWNLOAD_URL =
-  'https://raw.githubusercontent.com/swiftsolves-msft/RankandFile/main/decks/cloud-and-ai.json';
+/** Where authors can browse worked examples to copy, including future decks. */
+export const SAMPLE_DECKS_URL = 'https://github.com/swiftsolves-msft/RankandFile/tree/main/decks';
 
 export interface DeckValidation {
   valid: boolean;
