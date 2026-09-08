@@ -12,6 +12,21 @@ on:
 #   AZURE_ENV_NAME        – e.g. "prod" (drives resource naming in Bicep)
 #   AZURE_LOCATION        – e.g. "eastus2"
 #   VITE_HUB_URL          – https://<api-app-service>.azurewebsites.net/gamehub
+#
+# Path filtering: every push used to run infra + backend + frontend regardless
+# of what changed, which meant a one-line README edit paid the ~8 minute Bicep
+# deploy tax — and two quick pushes in a row could collide, since Azure refuses
+# a second deployment while the first is still active (error: DeploymentActive).
+# The "Detect changed paths" step below decides which of the three actually
+# need to run. When in doubt (first-ever run, a force-push, workflow_dispatch)
+# it defaults to running everything rather than guessing something can be
+# skipped.
+#
+# Because infra can now be skipped, the backend/frontend deploy steps no longer
+# get their target resource names from the Bicep step's outputs — those would
+# be empty on a skip. "Resolve resource names" looks them up from Azure
+# directly instead, which also means these steps no longer depend on infra
+# having run earlier in the same job.
 
 permissions:
   id-token: write
@@ -24,6 +39,64 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Path detection diffs against the previous commit, which needs
+          # history beyond the default single-commit shallow clone.
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual run — deploying everything."
+            echo "infra=true"    >> "$GITHUB_OUTPUT"
+            echo "backend=true"  >> "$GITHUB_OUTPUT"
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+
+          # A brand new branch or a force-push can hand us a "before" SHA with
+          # no history to diff against (all-zeros, or simply not present in
+          # this checkout). Treat that as "changed everything" rather than
+          # silently deploying nothing.
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            echo "No usable previous commit — deploying everything."
+            echo "infra=true"    >> "$GITHUB_OUTPUT"
+            echo "backend=true"  >> "$GITHUB_OUTPUT"
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          RUN_INFRA=false
+          RUN_BACKEND=false
+          RUN_FRONTEND=false
+
+          # A change to this workflow file should exercise the whole pipeline,
+          # so a change to how deploys work is actually verified end to end.
+          if echo "$CHANGED" | grep -qE '^infra/|^\.github/workflows/deploy\.yml$'; then
+            RUN_INFRA=true
+          fi
+
+          # nouns/ is compiled into the backend publish output (see
+          # RankandFile.GameHub.csproj), so a card-pool edit there needs a
+          # backend redeploy even though the folder lives outside backend/.
+          if echo "$CHANGED" | grep -qE '^backend/|^nouns/|^\.github/workflows/deploy\.yml$'; then
+            RUN_BACKEND=true
+          fi
+
+          if echo "$CHANGED" | grep -qE '^frontend/|^\.github/workflows/deploy\.yml$'; then
+            RUN_FRONTEND=true
+          fi
+
+          echo "infra=$RUN_INFRA"       >> "$GITHUB_OUTPUT"
+          echo "backend=$RUN_BACKEND"   >> "$GITHUB_OUTPUT"
+          echo "frontend=$RUN_FRONTEND" >> "$GITHUB_OUTPUT"
 
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
@@ -52,25 +125,50 @@ jobs:
           AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
 
       - name: Deploy infrastructure (Bicep)
-        id: infra
+        if: steps.changes.outputs.infra == 'true'
         run: |
           SUB_ID="${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}"
-          OUTPUTS=$(az deployment group create \
+          az deployment group create \
             --subscription "$SUB_ID" \
             --resource-group "rg-rankandfile-$AZURE_ENV_NAME" \
             --template-file infra/main.bicep \
-            --parameters environmentName="$AZURE_ENV_NAME" location="$AZURE_LOCATION" \
-            --query "properties.outputs" \
-            --output json)
-
-          echo "app_service_name=$(echo "$OUTPUTS" | jq -r '.appServiceName.value')" >> $GITHUB_OUTPUT
-          echo "swa_name=$(echo "$OUTPUTS" | jq -r '.staticWebAppName.value')"       >> $GITHUB_OUTPUT
-          echo "api_url=$(echo "$OUTPUTS" | jq -r '.apiUrl.value')"                   >> $GITHUB_OUTPUT
+            --parameters environmentName="$AZURE_ENV_NAME" location="$AZURE_LOCATION"
         env:
           AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
           AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
 
+      # Looked up directly from Azure rather than taken from the Bicep step's
+      # outputs, so backend/frontend deploys work whether or not infra ran
+      # this time. Assumes the resources already exist, which holds except on
+      # a first-ever deploy into a brand new environment — that case is always
+      # routed through the "deploy everything" fallback above, or run once via
+      # workflow_dispatch, either of which runs infra first regardless.
+      - name: Resolve resource names
+        id: names
+        if: steps.changes.outputs.backend == 'true' || steps.changes.outputs.frontend == 'true'
+        run: |
+          SUB_ID="${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}"
+          RG="rg-rankandfile-$AZURE_ENV_NAME"
+
+          APP_SERVICE_NAME=$(az webapp list \
+            --subscription "$SUB_ID" --resource-group "$RG" \
+            --query "[?ends_with(name, '-api')].name | [0]" --output tsv)
+          SWA_NAME=$(az staticwebapp list \
+            --subscription "$SUB_ID" --resource-group "$RG" \
+            --query "[?ends_with(name, '-frontend')].name | [0]" --output tsv)
+
+          if [ -z "$APP_SERVICE_NAME" ] || [ -z "$SWA_NAME" ]; then
+            echo "::error::Could not find the App Service or Static Web App in $RG. Run this workflow manually (workflow_dispatch) once to bootstrap infrastructure first."
+            exit 1
+          fi
+
+          echo "app_service_name=$APP_SERVICE_NAME" >> "$GITHUB_OUTPUT"
+          echo "swa_name=$SWA_NAME"                 >> "$GITHUB_OUTPUT"
+        env:
+          AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
+
       - name: Build and deploy backend
+        if: steps.changes.outputs.backend == 'true'
         run: |
           SUB_ID="${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}"
           dotnet publish backend/RankandFile.GameHub/RankandFile.GameHub.csproj \
@@ -79,7 +177,7 @@ jobs:
           az webapp deploy \
             --subscription "$SUB_ID" \
             --resource-group "rg-rankandfile-$AZURE_ENV_NAME" \
-            --name "${{ steps.infra.outputs.app_service_name }}" \
+            --name "${{ steps.names.outputs.app_service_name }}" \
             --src-path backend.zip \
             --type zip \
             --async true
@@ -87,6 +185,7 @@ jobs:
           AZURE_ENV_NAME: ${{ secrets.AZURE_ENV_NAME }}
 
       - name: Build frontend
+        if: steps.changes.outputs.frontend == 'true'
         run: |
           cd frontend
           npm install
@@ -96,9 +195,10 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Deploy frontend to Static Web App
+        if: steps.changes.outputs.frontend == 'true'
         run: |
           SUB_ID="${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}"
-          SWA_NAME="${{ steps.infra.outputs.swa_name }}"
+          SWA_NAME="${{ steps.names.outputs.swa_name }}"
           SWA_TOKEN=$(az staticwebapp secrets list \
             --subscription "$SUB_ID" \
             --name "$SWA_NAME" \
