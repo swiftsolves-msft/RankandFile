@@ -6,6 +6,13 @@ export interface Card {
   isSpicy: boolean;
 }
 
+/** A host-uploaded card set, replacing the built-in cybersecurity deck. */
+export interface CardDeck {
+  name: string;
+  description?: string;
+  cards: Card[];
+}
+
 export interface Player {
   /** Durable id that survives a refresh — not the SignalR connection id. */
   playerId: string;
@@ -36,6 +43,9 @@ export interface Session {
   cardMode: string;
   /** What a round does: 'icebreaker' | 'conference'. */
   gameMode: string;
+  /** Which cards rounds are dealt from: 'default' | 'custom'. */
+  deckSource: string;
+  customDeck: CardDeck | null;
   rounds: Round[];
 }
 

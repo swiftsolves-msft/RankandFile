@@ -54,7 +54,13 @@ builder.Services.AddRateLimiter(options =>
 // omitting it falls back to local in-process SignalR for development.
 // App Service env var AzureSignalR__Endpoint maps to config key AzureSignalR:Endpoint
 var signalREndpoint = builder.Configuration["AzureSignalR:Endpoint"];
-var signalRBuilder = builder.Services.AddSignalR()
+var signalRBuilder = builder.Services.AddSignalR(options =>
+    {
+        // A host-uploaded card deck arrives as a single hub argument and can run
+        // to tens of kilobytes; SignalR's 32 KB default would reject it outright.
+        // DeckValidator caps the deck well below this ceiling.
+        options.MaximumReceiveMessageSize = 512 * 1024;
+    })
     .AddJsonProtocol(options =>
     {
         // Ensure all Hub messages use camelCase so TypeScript interfaces match directly.

@@ -219,6 +219,85 @@ public class GameHub : Hub
             session.GameMode = gameMode == "conference" ? "conference" : "icebreaker");
     }
 
+    /// <summary>
+    /// Which card set rounds are dealt from: "default" | "custom". Switching to
+    /// custom without a validated deck already uploaded is refused rather than
+    /// silently falling back, so the host finds out now and not at kickoff.
+    /// </summary>
+    public async Task SetDeckSource(string sessionCode, string deckSource)
+    {
+        try
+        {
+            var session = await _repo.GetSessionAsync(sessionCode);
+            if (session == null)
+            {
+                await Clients.Caller.SendAsync("Error", "Session not found.");
+                return;
+            }
+
+            if (!IsHost(session) || session.Status != "Lobby") return;
+
+            if (deckSource == "custom" && session.CustomDeck == null)
+            {
+                await Clients.Caller.SendAsync("Error", "Upload a deck before switching to custom cards.");
+                return;
+            }
+
+            session.DeckSource = deckSource == "custom" ? "custom" : "default";
+            await _repo.SaveSessionAsync(session);
+            await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("Error", $"Failed to set deck source: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Stores a host-uploaded deck after re-validating it server-side. The browser
+    /// runs the same rules for fast feedback, but it is not a trust boundary — a
+    /// malformed deck accepted here would not fail at upload, it would fail
+    /// mid-round in front of a room.
+    /// </summary>
+    public async Task SetCustomDeck(string sessionCode, CardDeck deck)
+    {
+        try
+        {
+            var session = await _repo.GetSessionAsync(sessionCode);
+            if (session == null)
+            {
+                await Clients.Caller.SendAsync("Error", "Session not found.");
+                return;
+            }
+
+            if (!IsHost(session) || session.Status != "Lobby") return;
+
+            var validation = DeckValidator.Validate(deck);
+            if (!validation.IsValid)
+            {
+                await Clients.Caller.SendAsync("DeckRejected", new { Errors = validation.Errors });
+                return;
+            }
+
+            session.CustomDeck = deck;
+            session.DeckSource = "custom";
+            await _repo.SaveSessionAsync(session);
+
+            await Clients.Caller.SendAsync("DeckAccepted", new
+            {
+                deck.Name,
+                CardCount = deck.Cards.Count,
+                validation.SafeCount,
+                validation.SpicyCount,
+            });
+            await Clients.Group(sessionCode).SendAsync("SessionUpdated", session);
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("Error", $"Failed to load deck: {ex.Message}");
+        }
+    }
+
     /// Shared guard for host-only options that may only change before kickoff.
     private async Task SetLobbyOption(string sessionCode, string label, Action<Session> apply)
     {
@@ -289,7 +368,7 @@ public class GameHub : Hub
             session.CurrentRound++;
             var round = new Round { RoundNum = session.CurrentRound };
 
-            round.Cards = _cardGen.GenerateRoundCards();
+            round.Cards = _cardGen.GenerateRoundCards(session.ActiveDeck);
 
             // Conference rounds have no matching engine — everyone ranks, and the
             // room is aggregated instead. Pairings/Triple stay empty.

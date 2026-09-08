@@ -1,0 +1,111 @@
+{
+  "name": "Cloud and AI",
+  "description": "Cloud platform and applied AI topics, with contested ground around data, autonomy and headcount.",
+  "cards": [
+    {
+      "noun": "Shared Responsibility Model",
+      "tooltip": "The split between what your cloud provider secures and what you still own.",
+      "tooltipMeme": "The contract everyone cites after the incident and nobody reads before it.",
+      "category": "Cloud Governance",
+      "isSpicy": false
+    },
+    {
+      "noun": "Identity Federation",
+      "tooltip": "One trusted identity provider issuing access across many cloud services.",
+      "tooltipMeme": "One login to rule them all. Hope it has MFA.",
+      "category": "Identity and Access",
+      "isSpicy": false
+    },
+    {
+      "noun": "Infrastructure as Code",
+      "tooltip": "Defining cloud resources in version-controlled templates instead of clicking through a portal.",
+      "tooltipMeme": "Your outage is now reproducible across three regions simultaneously.",
+      "category": "Cloud Operations",
+      "isSpicy": false
+    },
+    {
+      "noun": "Container Orchestration",
+      "tooltip": "Automated scheduling, scaling and healing of containerized workloads.",
+      "tooltipMeme": "You wanted to ship an app. Now you operate a small distributed operating system.",
+      "category": "Cloud Architecture",
+      "isSpicy": false
+    },
+    {
+      "noun": "Data Residency",
+      "tooltip": "Legal and contractual limits on which geography your data is allowed to live in.",
+      "tooltipMeme": "Your bytes need a visa.",
+      "category": "Cloud Governance",
+      "isSpicy": false
+    },
+    {
+      "noun": "Model Evaluation",
+      "tooltip": "Measuring an AI model's accuracy, bias and failure modes before trusting it with real work.",
+      "tooltipMeme": "The step between the demo was amazing and why on earth did it do that.",
+      "category": "AI Operations",
+      "isSpicy": false
+    },
+    {
+      "noun": "Prompt Injection",
+      "tooltip": "Untrusted input hijacking an AI system's instructions to change what it does.",
+      "tooltipMeme": "Ignore all previous security controls.",
+      "category": "AI Security",
+      "isSpicy": false
+    },
+    {
+      "noun": "Retrieval Augmented Generation",
+      "tooltip": "Grounding a model's answers in your own documents rather than its training data.",
+      "tooltipMeme": "Teaching the model to cite sources so it can be wrong with footnotes.",
+      "category": "AI Architecture",
+      "isSpicy": false
+    },
+    {
+      "noun": "Cloud Cost Governance",
+      "tooltip": "Controlling spend through budgets, tagging and rightsizing before the invoice arrives.",
+      "tooltipMeme": "The forgotten GPU cluster now has its own line item and arguably its own headcount.",
+      "category": "Cloud Operations",
+      "isSpicy": false
+    },
+    {
+      "noun": "Serverless Computing",
+      "tooltip": "Running code without provisioning or managing the servers underneath it.",
+      "tooltipMeme": "There are still servers. You are simply not invited to meet them.",
+      "category": "Cloud Architecture",
+      "isSpicy": false
+    },
+    {
+      "noun": "Training on Customer Data",
+      "tooltip": "Should providers train their models on the data you store with them?",
+      "tooltipMeme": "Your private documents turned out to be a very promising student.",
+      "category": "Ethics and Policy",
+      "isSpicy": true
+    },
+    {
+      "noun": "AI-Generated Code in Production",
+      "tooltip": "How much machine-written code belongs in critical systems without a human reading it?",
+      "tooltipMeme": "It compiles. Ship it.",
+      "category": "Ethics and Practice",
+      "isSpicy": true
+    },
+    {
+      "noun": "Autonomous Agents with Production Access",
+      "tooltip": "Should AI agents be allowed to take real actions in live systems without a human approving each one?",
+      "tooltipMeme": "Handing production credentials to something that confidently makes things up.",
+      "category": "Emerging Tech",
+      "isSpicy": true
+    },
+    {
+      "noun": "Replacing Analysts with AI",
+      "tooltip": "Where is the line between augmenting a security team and quietly shrinking it?",
+      "tooltipMeme": "The SOC is now one very tired person and a subscription.",
+      "category": "Workforce",
+      "isSpicy": true
+    },
+    {
+      "noun": "Cloud Vendor Lock-In",
+      "tooltip": "How much strategic freedom is worth trading away for one provider's convenience?",
+      "tooltipMeme": "The exit plan is a slide nobody has ever costed.",
+      "category": "Cloud Strategy",
+      "isSpicy": true
+    }
+  ]
+}

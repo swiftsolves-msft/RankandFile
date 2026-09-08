@@ -85,6 +85,80 @@ Independent of game mode, the host chooses how the cards read.
 
 ---
 
+## Custom card decks
+
+The built-in deck is cybersecurity, but the game itself is subject-agnostic. A
+host can upload their own deck in the lobby to run the same exercise for cloud
+architecture, AI strategy, product prioritisation, or any other topic where a
+team's ranking is worth comparing.
+
+Select **Custom Upload** under Card Deck in the lobby and choose a JSON file. The
+deck is validated in the browser and again on the server before it is accepted,
+and it applies to every round of that session.
+
+A complete working example ships in this repository:
+[`decks/cloud-and-ai.json`](decks/cloud-and-ai.json). The same file is linked
+from the upload control in-game, so a host can download it, adapt it, and upload
+the result.
+
+### Format
+
+```json
+{
+  "name": "Cloud and AI",
+  "description": "Optional one-line summary of the deck.",
+  "cards": [
+    {
+      "noun": "Shared Responsibility Model",
+      "tooltip": "The split between what your cloud provider secures and what you still own.",
+      "tooltipMeme": "The contract everyone cites after the incident and nobody reads before it.",
+      "category": "Cloud Governance",
+      "isSpicy": false
+    }
+  ]
+}
+```
+
+| Field | Required | Purpose |
+| --- | --- | --- |
+| `name` | Yes | Deck name, shown to the host once loaded. Maximum 80 characters |
+| `description` | No | Short summary. Maximum 200 characters |
+| `cards` | Yes | The card list |
+| `cards[].noun` | Yes | The term players rank. Must be unique within the deck. Maximum 60 characters |
+| `cards[].tooltip` | Yes | Straight definition, shown in Normal card mode. Maximum 300 characters |
+| `cards[].tooltipMeme` | Yes | Irreverent version, shown in Meme card mode. Maximum 300 characters |
+| `cards[].category` | Yes | Grouping label, for example "Cloud Governance" |
+| `cards[].isSpicy` | No | `true` marks a contested card. Defaults to `false` |
+
+A bare JSON array of cards is also accepted, in which case the filename is used
+as the deck name.
+
+### Rules
+
+- At least **4** cards with `isSpicy: false` and **2** with `isSpicy: true`. Each
+  round deals four standard and one spicy card, or three and two, so a deck
+  thinner than this cannot fill a hand.
+- Maximum 100 cards, and a maximum file size of 512 KB.
+- Nouns must be unique, compared case-insensitively. Nouns key each round's
+  rankings, so a duplicate could be dealt twice into one hand and corrupt that
+  round's scoring.
+- Every card needs all four text fields populated. `tooltipMeme` is required
+  because the host can switch to Meme card mode at any point before kickoff.
+
+Validation reports every problem it finds at once, identified by card number and
+noun, rather than stopping at the first.
+
+### Designing a good deck
+
+Include some deliberately contested cards. Rounds where everyone agrees produce
+a tidy result and no conversation; the value of the exercise comes from the cards
+that split the room. In the built-in deck those are topics like government
+backdoors and mass surveillance. In the cloud and AI sample they are questions
+such as training on customer data, autonomous agents holding production access,
+and how much machine-written code belongs in critical systems.
+
+---
+
 ## Presenting to a room
 
 The host can open a separate full-screen window to share on a projector or in a
@@ -123,7 +197,8 @@ frontend/
   lib/                     Shared client logic (SignalR, identity, instructions)
 infra/
   main.bicep               All Azure resources
-nouns/                     Card content
+nouns/                     Built-in cybersecurity card content
+decks/                     Sample uploadable decks
 ```
 
 ---

@@ -31,6 +31,16 @@ public class Session
 
     public bool IsConference => GameMode == "conference";
 
+    // Which cards a round is dealt from: "default" (built-in cybersecurity set)
+    // or "custom" (a deck the host uploaded). Kept separate from CustomDeck so a
+    // host can toggle back to the defaults without re-uploading their file.
+    public string DeckSource { get; set; } = "default";
+    public CardDeck? CustomDeck { get; set; }
+
+    /// <summary>The deck a round should actually deal from, or null for the built-in set.</summary>
+    [JsonIgnore]
+    public CardDeck? ActiveDeck => DeckSource == "custom" ? CustomDeck : null;
+
     /// <summary>
     /// Everyone currently present. Every round-completion check counts these and
     /// never Players.Count — otherwise a single dropped connection leaves a total

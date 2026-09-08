@@ -11,6 +11,7 @@ import Timer from './Timer';
 import InstructionsLoop from './InstructionsLoop';
 import JoinQR from './JoinQR';
 import ConferenceResults from './conference/ConferenceResults';
+import DeckUpload from './DeckUpload';
 import { getPlayerId } from '../lib/playerId';
 import {
   PresenterResults,
@@ -22,13 +23,22 @@ import {
   subscribePresenter,
 } from '../lib/presenter';
 import {
-  GuessResult, Player, RankingProgress, Round, RoundAggregate, Session,
+  CardDeck, GuessResult, Player, RankingProgress, Round, RoundAggregate, Session,
 } from '../lib/types';
 
 /** How the cards read. */
 type CardMode = 'normal' | 'meme';
 /** What a round actually does. */
 type GameMode = 'icebreaker' | 'conference';
+/** Which cards rounds are dealt from. */
+type DeckSource = 'default' | 'custom';
+
+interface LoadedDeck {
+  name: string;
+  cardCount: number;
+  safeCount: number;
+  spicyCount: number;
+}
 
 /** Grace period after the ranking clock hits zero before the host closes the
  *  round, so submissions still in flight at t=0 are counted. */
@@ -79,6 +89,13 @@ export default function GameScreen({
     initialSession.gameMode === 'conference' ? 'conference' : 'icebreaker'
   );
   const isConference = gameMode === 'conference';
+
+  // Card deck — default built-in cards, or a set the host uploads.
+  const [deckSource, setDeckSource] = useState<DeckSource>(
+    initialSession.deckSource === 'custom' ? 'custom' : 'default'
+  );
+  const [loadedDeck, setLoadedDeck] = useState<LoadedDeck | null>(null);
+  const [deckErrors, setDeckErrors] = useState<string[] | null>(null);
 
   const [roundNum, setRoundNum] = useState<number>(0);
 
@@ -263,6 +280,16 @@ export default function GameScreen({
       if (s.maxRounds) setMaxRounds(s.maxRounds);
       if (s.cardMode) setCardMode(s.cardMode as CardMode);
       setGameMode(s.gameMode === 'conference' ? 'conference' : 'icebreaker');
+      setDeckSource(s.deckSource === 'custom' ? 'custom' : 'default');
+      // Keep the deck summary in step for anyone who reconnects mid-lobby.
+      if (s.customDeck) {
+        setLoadedDeck({
+          name: s.customDeck.name,
+          cardCount: s.customDeck.cards.length,
+          safeCount: s.customDeck.cards.filter(c => !c.isSpicy).length,
+          spicyCount: s.customDeck.cards.filter(c => c.isSpicy).length,
+        });
+      }
     });
 
     connection.on('RoundStarted', (round: Round) => {
@@ -356,6 +383,18 @@ export default function GameScreen({
       setDiscussionActive(true);
     });
 
+    connection.on('DeckAccepted', (summary: LoadedDeck) => {
+      setDeckErrors(null);
+      setLoadedDeck(summary);
+    });
+
+    // The server re-validates every deck; surface its verdict rather than
+    // assuming the browser's pass was the final word.
+    connection.on('DeckRejected', (payload: { errors: string[] }) => {
+      setLoadedDeck(null);
+      setDeckErrors(payload.errors);
+    });
+
     connection.on('Error', (msg: string) => {
       setServerError(msg);
       // Reset submission flags so the player can retry instead of being
@@ -368,6 +407,8 @@ export default function GameScreen({
       connection.off('SessionUpdated');
       connection.off('RoundStarted');
       connection.off('AllRankingsSubmitted');
+      connection.off('DeckAccepted');
+      connection.off('DeckRejected');
       connection.off('RankingProgress');
       connection.off('RoundAggregate');
       connection.off('GuessResult');
@@ -414,6 +455,23 @@ export default function GameScreen({
   const handleGameModeChange = (mode: GameMode) => {
     setSelectedGameMode(mode);
     connection.invoke('SetGameMode', sessionCode, mode).catch(console.error);
+  };
+
+  const handleDeckSourceChange = (source: DeckSource) => {
+    // Switching to custom without an accepted deck is refused server-side; keep
+    // the local toggle honest by only moving once the server confirms.
+    if (source === 'custom' && !loadedDeck) {
+      setDeckSource('custom');
+      return;
+    }
+    connection.invoke('SetDeckSource', sessionCode, source).catch(console.error);
+  };
+
+  const handleDeckUpload = (deck: CardDeck) => {
+    setDeckErrors(null);
+    connection.invoke('SetCustomDeck', sessionCode, deck).catch((err: Error) => {
+      setDeckErrors([`Could not send the deck: ${err.message}`]);
+    });
   };
 
   // Conference fallback: lets the host publish results immediately rather than
@@ -495,6 +553,45 @@ export default function GameScreen({
                     ? 'No pairing — the whole room is aggregated and discussed'
                     : 'Pair up and guess your partner’s ranking'}
                 </p>
+              </div>
+
+              {/* Card deck selector — which cards rounds are dealt from */}
+              <div className="bg-zinc-800 rounded-2xl px-8 py-5 w-full max-w-2xl">
+                <p className="text-zinc-300 text-sm font-semibold uppercase tracking-widest mb-4">Card Deck</p>
+                <div className="flex items-center gap-6 justify-center">
+                  <button
+                    onClick={() => handleDeckSourceChange('default')}
+                    className={`px-6 py-3 rounded-xl font-bold transition border-2 ${
+                      deckSource === 'default'
+                        ? 'bg-neon text-black border-neon'
+                        : 'bg-zinc-700 text-zinc-300 border-zinc-600 hover:border-neon hover:text-neon'
+                    }`}
+                  >
+                    Cybersecurity
+                  </button>
+                  <button
+                    onClick={() => handleDeckSourceChange('custom')}
+                    className={`px-6 py-3 rounded-xl font-bold transition border-2 ${
+                      deckSource === 'custom'
+                        ? 'bg-cyber text-black border-cyber'
+                        : 'bg-zinc-700 text-zinc-300 border-zinc-600 hover:border-cyber hover:text-cyber'
+                    }`}
+                  >
+                    Custom Upload
+                  </button>
+                </div>
+
+                {deckSource === 'custom' ? (
+                  <DeckUpload
+                    loaded={loadedDeck}
+                    serverErrors={deckErrors}
+                    onDeck={handleDeckUpload}
+                  />
+                ) : (
+                  <p className="text-zinc-500 text-xs mt-3">
+                    The built-in deck: 50 standard and 25 spicy cybersecurity cards
+                  </p>
+                )}
               </div>
 
               {/* Card mode selector — how the cards read */}
