@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Card, GuessResult } from '../lib/types';
+import { Card, DiscussionProgress, GuessResult } from '../lib/types';
 
 const DISCUSSION_SECONDS = 120;
 
@@ -17,16 +17,82 @@ function rowBg(match: 'exact' | 'near' | 'miss' | undefined) {
   return 'border-zinc-700 bg-zinc-900/50';
 }
 
+/**
+ * The discussion clock plus the "Finished Discussion" control.
+ *
+ * Rendered on both result paths — including the one where a partner dropped —
+ * because a player without this button is still counted in the room, and would
+ * silently hold everyone else on the clock with no way to release it.
+ */
+function DiscussionPanel({
+  timeLeft,
+  hasFinished,
+  progress,
+  onFinish,
+}: {
+  timeLeft: number;
+  hasFinished: boolean;
+  progress: DiscussionProgress | null;
+  onFinish: () => void;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-6 text-center transition-colors ${
+        timeLeft <= 20 ? 'border-red-500/50 bg-red-500/5' : 'border-zinc-700 bg-zinc-900'
+      }`}
+    >
+      <p className="text-zinc-400 text-sm mb-1 uppercase tracking-wider">Discussion time</p>
+      <div className={`text-5xl font-mono font-bold ${timeLeft <= 20 ? 'text-red-400' : 'text-neon'}`}>
+        {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+      </div>
+      <p className="text-zinc-500 text-xs mt-2">
+        Talk it out — why did you rank them that way?
+      </p>
+
+      <div className="mt-5">
+        {hasFinished ? (
+          <div className="flex items-center justify-center gap-3 text-zinc-400">
+            <span className="animate-pulse text-neon text-lg">●</span>
+            <span className="text-sm">Waiting for everyone else…</span>
+          </div>
+        ) : (
+          <button
+            onClick={onFinish}
+            className="px-8 py-3 bg-neon text-black font-bold rounded-xl hover:opacity-90 transition"
+          >
+            Finished Discussion
+          </button>
+        )}
+
+        {progress && (
+          <p className="text-zinc-500 text-xs mt-3">
+            <span className="text-neon font-mono font-bold">{progress.finished}</span>
+            {' of '}
+            <span className="font-mono">{progress.total}</span>
+            {' finished — the round moves on when everyone has, or when the clock runs out'}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ResultsPhase({
   result,
   cards,
   discussionActive,
   onDiscussionEnd,
+  onFinishDiscussion,
+  hasFinishedDiscussion,
+  discussionProgress,
 }: {
   result: GuessResult;
   cards: Card[];
   discussionActive: boolean;
   onDiscussionEnd: () => void;
+  onFinishDiscussion: () => void;
+  hasFinishedDiscussion: boolean;
+  discussionProgress: DiscussionProgress | null;
 }) {
   const [timeLeft, setTimeLeft] = useState(DISCUSSION_SECONDS);
   // Stable ref so the interval callback never captures a stale onDiscussionEnd
@@ -53,6 +119,23 @@ export default function ResultsPhase({
   const cardMap = Object.fromEntries(cards.map(c => [c.noun, c]));
   const maxScore = cards.length * 3;
 
+  const discussion = discussionActive ? (
+    <DiscussionPanel
+      timeLeft={timeLeft}
+      hasFinished={hasFinishedDiscussion}
+      progress={discussionProgress}
+      onFinish={onFinishDiscussion}
+    />
+  ) : (
+    <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center">
+      <div className="flex items-center justify-center gap-3 text-zinc-400">
+        <span className="animate-pulse text-neon text-lg">●</span>
+        <span>Waiting for your partner to submit their guess…</span>
+      </div>
+      <p className="text-zinc-600 text-xs mt-2">Discussion timer starts when both players have submitted</p>
+    </div>
+  );
+
   // Partner left before ranking, so there is nothing to compare against. Say so
   // plainly rather than rendering an empty comparison table.
   if (result.partnerDropped) {
@@ -68,6 +151,7 @@ export default function ResultsPhase({
             round. No points lost — you&apos;ll be paired with someone new next round.
           </p>
         </div>
+        {discussion}
       </div>
     );
   }
@@ -112,28 +196,7 @@ export default function ResultsPhase({
         })}
       </div>
 
-      {/* Discussion timer — only shown once both players have submitted */}
-      {discussionActive ? (
-        <div className={`rounded-2xl border p-6 text-center transition-colors ${
-          timeLeft <= 20 ? 'border-red-500/50 bg-red-500/5' : 'border-zinc-700 bg-zinc-900'
-        }`}>
-          <p className="text-zinc-400 text-sm mb-1 uppercase tracking-wider">Discussion time</p>
-          <div className={`text-5xl font-mono font-bold ${timeLeft <= 20 ? 'text-red-400' : 'text-neon'}`}>
-            {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
-          </div>
-          <p className="text-zinc-500 text-xs mt-2">
-            Talk it out — why did you rank them that way?
-          </p>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center">
-          <div className="flex items-center justify-center gap-3 text-zinc-400">
-            <span className="animate-pulse text-neon text-lg">●</span>
-            <span>Waiting for your partner to submit their guess…</span>
-          </div>
-          <p className="text-zinc-600 text-xs mt-2">Discussion timer starts when both players have submitted</p>
-        </div>
-      )}
+      {discussion}
     </div>
   );
 }

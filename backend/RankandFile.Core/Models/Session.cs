@@ -70,6 +70,13 @@ public class Session
     public bool AllPresentGuessed(Round round) =>
         ConnectedCount > 0 && SubmittedGuessCount(round) >= ConnectedCount;
 
+    public int FinishedDiscussionCount(Round round) =>
+        Players.Count(p => p.IsConnected && round.DiscussionFinished.Contains(p.PlayerId));
+
+    /// <summary>True once everyone present has said they are done talking.</summary>
+    public bool AllPresentFinishedDiscussion(Round round) =>
+        ConnectedCount > 0 && FinishedDiscussionCount(round) >= ConnectedCount;
+
     /// <summary>
     /// Hands the host role to the longest-standing connected player when the
     /// current host is absent, so a session is never left with nobody able to

@@ -18,4 +18,10 @@ public class Round
     // early — so each transition has to fire exactly once.
     public bool RankingsClosed { get; set; }
     public bool RoundEnded { get; set; }
+
+    // Ice Breaker only — players who have said they are done talking, so the
+    // room can move on without waiting out the discussion clock. Stored as a
+    // List for Cosmos JSON round-trip compatibility, same as PreviousPairs.
+    public List<string> DiscussionFinished { get; set; } = new();
+    public bool DiscussionClosed { get; set; }
 }

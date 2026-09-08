@@ -23,7 +23,8 @@ import {
   subscribePresenter,
 } from '../lib/presenter';
 import {
-  CardDeck, GuessResult, Player, RankingProgress, Round, RoundAggregate, Session,
+  CardDeck, DiscussionProgress, GuessResult, Player, RankingProgress, Round,
+  RoundAggregate, Session,
 } from '../lib/types';
 
 /** How the cards read. */
@@ -118,6 +119,8 @@ export default function GameScreen({
   const [pendingIsFinal, setPendingIsFinal] = useState(false);
   const [discussionActive, setDiscussionActive] = useState(false);
   const [discussionDone, setDiscussionDone] = useState(false);
+  const [hasFinishedDiscussion, setHasFinishedDiscussion] = useState(false);
+  const [discussionProgress, setDiscussionProgress] = useState<DiscussionProgress | null>(null);
 
   // Ref keeps current players without triggering handler re-registration
   const playersRef = useRef<Player[]>(initialSession.players);
@@ -347,6 +350,16 @@ export default function GameScreen({
       setRankingProgress(p);
     });
 
+    // Ice Breaker: live count of who has finished talking.
+    connection.on('DiscussionProgress', (p: DiscussionProgress) => {
+      setDiscussionProgress(p);
+    });
+
+    // Everyone present is done talking — move on without waiting out the clock.
+    connection.on('DiscussionComplete', () => {
+      setDiscussionDone(true);
+    });
+
     // Conference: the room's aggregated result, replacing guess/results/leaderboard.
     connection.on('RoundAggregate', (agg: RoundAggregate) => {
       autoSubmitRef.current = null;
@@ -370,6 +383,9 @@ export default function GameScreen({
       setPhase('results');
       setPendingLeaderboard(lb);
       setDiscussionActive(true);
+      // Fresh discussion — clear last round's "finished" state.
+      setHasFinishedDiscussion(false);
+      setDiscussionProgress(null);
     });
 
     connection.on('GameOver', (finalStandings: Player[]) => {
@@ -381,6 +397,9 @@ export default function GameScreen({
       setPendingLeaderboard(finalStandings);
       setPendingIsFinal(true);
       setDiscussionActive(true);
+      // Fresh discussion — clear last round's "finished" state.
+      setHasFinishedDiscussion(false);
+      setDiscussionProgress(null);
     });
 
     connection.on('DeckAccepted', (summary: LoadedDeck) => {
@@ -409,6 +428,8 @@ export default function GameScreen({
       connection.off('AllRankingsSubmitted');
       connection.off('DeckAccepted');
       connection.off('DeckRejected');
+      connection.off('DiscussionProgress');
+      connection.off('DiscussionComplete');
       connection.off('RankingProgress');
       connection.off('RoundAggregate');
       connection.off('GuessResult');
@@ -478,6 +499,13 @@ export default function GameScreen({
   // waiting out the clock (or if the auto-close ever misfires).
   const handleCloseRankings = () => {
     connection.invoke('CloseRankings', sessionCode).catch(console.error);
+  };
+
+  // Ice Breaker: this player is done talking. Flip locally straight away so the
+  // button responds even before the broadcast lands.
+  const handleFinishDiscussion = () => {
+    setHasFinishedDiscussion(true);
+    connection.invoke('FinishDiscussion', sessionCode).catch(console.error);
   };
 
   return (
@@ -737,6 +765,9 @@ export default function GameScreen({
           cards={currentRound.cards}
           discussionActive={discussionActive}
           onDiscussionEnd={() => setDiscussionDone(true)}
+          onFinishDiscussion={handleFinishDiscussion}
+          hasFinishedDiscussion={hasFinishedDiscussion}
+          discussionProgress={discussionProgress}
         />
       )}
 

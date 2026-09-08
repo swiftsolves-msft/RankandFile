@@ -101,6 +101,12 @@ export interface RankingProgress {
   total: number;
 }
 
+/** Ice Breaker: how many players present have said they are done talking. */
+export interface DiscussionProgress {
+  finished: number;
+  total: number;
+}
+
 export interface GuessResult {
   targetName: string;
   score: number;

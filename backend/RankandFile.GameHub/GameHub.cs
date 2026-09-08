@@ -587,6 +587,54 @@ public class GameHub : Hub
         }
     }
 
+    /// <summary>
+    /// Ice Breaker: a player signalling they are done talking about the round.
+    /// Once everyone still present has, the room advances immediately instead of
+    /// waiting out the discussion clock. That clock stays as a backstop, so one
+    /// person who never taps the button cannot hold the room.
+    /// </summary>
+    public async Task FinishDiscussion(string sessionCode)
+    {
+        var sem = _sessionLocks.GetOrAdd(sessionCode, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync();
+        try
+        {
+            var session = await _repo.GetSessionAsync(sessionCode);
+            if (session == null) return;
+
+            // Conference has no discussion phase — results are aggregated instead.
+            if (session.IsConference || session.Rounds.Count == 0) return;
+
+            var playerId = ResolvePlayerId(session);
+            if (playerId == null) return;
+
+            var round = session.Rounds.Last();
+            if (round.DiscussionClosed) return;
+
+            // Idempotent — a double tap, or a rejoin re-sending it, is a no-op.
+            if (round.DiscussionFinished.Contains(playerId)) return;
+
+            round.DiscussionFinished.Add(playerId);
+            await _repo.SaveSessionAsync(session);
+
+            await Clients.Group(sessionCode).SendAsync("DiscussionProgress", new
+            {
+                Finished = session.FinishedDiscussionCount(round),
+                Total = session.ConnectedCount,
+            });
+
+            await EvaluateRoundProgressAsync(session, sessionCode);
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("Error", $"Failed to finish discussion: {ex.Message}");
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
     // ===================== Progress evaluation =====================
 
     /// <summary>
@@ -632,6 +680,16 @@ public class GameHub : Hub
                 {
                     await Clients.Group(sessionCode).SendAsync("LeaderboardUpdate", sorted);
                 }
+            }
+
+            // Everyone still here has finished talking, so skip the rest of the
+            // discussion clock. Also re-checked on disconnect: if the last person
+            // the room was waiting on leaves, the remainder should move on.
+            if (round.RoundEnded && !round.DiscussionClosed && session.AllPresentFinishedDiscussion(round))
+            {
+                round.DiscussionClosed = true;
+                dirty = true;
+                await Clients.Group(sessionCode).SendAsync("DiscussionComplete");
             }
         }
 
